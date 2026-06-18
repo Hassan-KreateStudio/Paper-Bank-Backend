@@ -6,3 +6,9 @@ account_id = "f41c4320cb7f3ed1b791e8c54ba8d4a6"
 [vars]
 APP_ENV = "development"
 WORKERS_AI_MODEL = "@cf/baai/bge-base-en-v1.5"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "paper-bank"
+database_id = "84f7eb2f-f519-43aa-a3be-f66a0630db47"
+migrations_dir = "migrations/d1"
