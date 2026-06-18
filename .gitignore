@@ -1,3 +1,6 @@
 node_modules
 bun.lockb
 .env
+.dev.vars
+.wrangler
+dist

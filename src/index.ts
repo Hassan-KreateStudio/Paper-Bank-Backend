@@ -1,18 +1,5 @@
-import { Hono } from "hono";
+import { createApp } from "./application/bootstrap";
 
-const app = new Hono();
+const app = createApp();
 
-app.get("/", (c) => {
-  return c.json({
-    message: "Paper Bank backend is running"
-  });
-});
-
-const port = Number(process.env.PORT ?? 3000);
-
-const server = Bun.serve({
-  port,
-  fetch: app.fetch
-});
-
-console.log(`Server running at ${server.url}`);
+export default app;
