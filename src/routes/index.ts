@@ -12,7 +12,7 @@ import { requestRoutes } from "../domains/requests/routes";
 import { searchRoutes } from "../domains/search/routes";
 import { accessRoutes } from "../domains/access/routes";
 import { uploadRoutes } from "../domains/uploads/routes";
-import { moderationRoutes } from "../domains/moderation/routes";
+import { reviewRoutes } from "../domains/review/routes";
 
 export const routes = new Hono<AppEnv>();
 
@@ -36,4 +36,4 @@ routes.route("/api/requests", requestRoutes);
 routes.route("/api/search", searchRoutes);
 routes.route("/api/access", accessRoutes);
 routes.route("/api/uploads", uploadRoutes);
-routes.route("/api/moderation", moderationRoutes);
+routes.route("/api/review", reviewRoutes);

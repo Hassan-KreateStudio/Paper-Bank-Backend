@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../../../lib/app-env";
 
-export const moderationRoutes = new Hono<AppEnv>();
+export const reviewRoutes = new Hono<AppEnv>();
 
-moderationRoutes.get("/queue", (c) => {
+reviewRoutes.get("/queue", (c) => {
   return c.json({
-    domain: "moderation",
+    domain: "review",
     items: []
   });
 });
