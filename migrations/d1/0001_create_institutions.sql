@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS institutions (
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   short_code TEXT NOT NULL UNIQUE,
+  email_domain TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

@@ -1,9 +1,10 @@
 CREATE TABLE IF NOT EXISTS auth_challenges (
   id TEXT PRIMARY KEY,
   institution_id TEXT NOT NULL,
-  student_id TEXT NOT NULL,
+  student_id TEXT,
   admission_number TEXT NOT NULL,
   email TEXT NOT NULL,
+  full_name TEXT NOT NULL,
   verification_code_hash TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
   expires_at TEXT NOT NULL,

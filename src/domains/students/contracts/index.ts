@@ -3,4 +3,15 @@ export type Student = {
   institutionId: string;
   admissionNumber: string;
   email: string;
+  fullName: string;
+  status: string;
+  emailVerifiedAt: string | null;
+};
+
+export type CreateStudentInput = {
+  institutionId: string;
+  admissionNumber: string;
+  email: string;
+  fullName: string;
+  status?: string;
 };
