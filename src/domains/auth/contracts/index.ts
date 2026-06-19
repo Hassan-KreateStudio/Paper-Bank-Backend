@@ -27,3 +27,8 @@ export type VerifyChallengeInput = {
   challengeId: string;
   verificationCode: string;
 };
+
+export type ChallengeCooldownState = {
+  allowed: boolean;
+  retryAfterSeconds: number;
+};

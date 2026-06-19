@@ -34,7 +34,7 @@ export const authRepository = {
             consumed_at,
             created_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
         `
       )
       .bind(
@@ -58,6 +58,27 @@ export const authRepository = {
     return db
       .prepare(`${authChallengeSelect} WHERE id = ?1 LIMIT 1`)
       .bind(challengeId)
+      .first<AuthChallenge>();
+  },
+  findLatestPendingChallenge: async (
+    db: D1Database,
+    institutionId: string,
+    admissionNumber: string,
+    email: string
+  ) => {
+    return db
+      .prepare(
+        `
+          ${authChallengeSelect}
+          WHERE institution_id = ?1
+            AND admission_number = ?2
+            AND email = ?3
+            AND status = 'pending'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `
+      )
+      .bind(institutionId, admissionNumber, email)
       .first<AuthChallenge>();
   },
   consumeChallenge: async (db: D1Database, challengeId: string, consumedAt: string) => {

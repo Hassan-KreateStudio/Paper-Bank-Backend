@@ -3,9 +3,16 @@ import { studentsRepository } from "../../students/repository";
 import { AppError, NotFoundError, UnauthorizedError } from "../../../lib/errors";
 import { logger } from "../../../platform/observability";
 import { authRepository } from "../repository";
-import type { AuthChallenge, CreateChallengeInput, VerifyChallengeInput } from "../contracts";
+import type {
+  AuthChallenge,
+  ChallengeCooldownState,
+  CreateChallengeInput,
+  VerifyChallengeInput
+} from "../contracts";
+import { createAuthToken } from "../token";
 
 const CHALLENGE_TTL_MINUTES = 10;
+const CHALLENGE_COOLDOWN_SECONDS = 60;
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const normalizeFullName = (fullName: string) => fullName.trim();
@@ -42,8 +49,39 @@ const createExpiry = () => {
 
 const isExpired = (expiresAt: string) => new Date(expiresAt).getTime() <= Date.now();
 
+export const getChallengeCooldownState = (
+  latestChallengeCreatedAt: string | null,
+  now = Date.now()
+): ChallengeCooldownState => {
+  if (!latestChallengeCreatedAt) {
+    return {
+      allowed: true,
+      retryAfterSeconds: 0
+    };
+  }
+
+  const elapsedSeconds = Math.floor((now - new Date(latestChallengeCreatedAt).getTime()) / 1000);
+  const remainingSeconds = CHALLENGE_COOLDOWN_SECONDS - elapsedSeconds;
+
+  if (remainingSeconds > 0) {
+    return {
+      allowed: false,
+      retryAfterSeconds: remainingSeconds
+    };
+  }
+
+  return {
+    allowed: true,
+    retryAfterSeconds: 0
+  };
+};
+
 export const authService = {
-  createChallenge: async (db: D1Database, input: CreateChallengeInput) => {
+  createChallenge: async (
+    db: D1Database,
+    input: CreateChallengeInput,
+    options?: { now?: number }
+  ) => {
     const normalizedEmail = normalizeEmail(input.email);
     const institution = await institutionsRepository.findByEmailDomain(db, getEmailDomain(normalizedEmail));
 
@@ -73,6 +111,24 @@ export const authService = {
       throw new UnauthorizedError("The provided student details could not be verified.");
     }
 
+    const latestPendingChallenge = await authRepository.findLatestPendingChallenge(
+      db,
+      institution.id,
+      input.admissionNumber,
+      normalizedEmail
+    );
+    const cooldownState = getChallengeCooldownState(
+      latestPendingChallenge?.createdAt ?? null,
+      options?.now
+    );
+
+    if (!cooldownState.allowed) {
+      throw new AppError(
+        `Please wait ${cooldownState.retryAfterSeconds} seconds before requesting another verification code.`,
+        429
+      );
+    }
+
     const verificationCode = generateVerificationCode();
     const challenge: AuthChallenge = {
       id: crypto.randomUUID(),
@@ -100,10 +156,15 @@ export const authService = {
 
     return {
       challengeId: challenge.id,
-      message: "Verification code sent."
+      message: "Verification challenge created.",
+      expiresAt: challenge.expiresAt
     };
   },
-  verifyChallenge: async (db: D1Database, input: VerifyChallengeInput) => {
+  verifyChallenge: async (
+    db: D1Database,
+    input: VerifyChallengeInput,
+    env: { AUTH_TOKEN_SECRET?: string }
+  ) => {
     const challenge = await authRepository.findChallengeById(db, input.challengeId);
 
     if (!challenge) {
@@ -162,12 +223,15 @@ export const authService = {
     await authRepository.attachStudent(db, challenge.id, student.id);
     await authRepository.consumeChallenge(db, challenge.id, consumedAt);
     await studentsRepository.markVerified(db, student.id, consumedAt);
+    const authToken = await createAuthToken(student.id, challenge.institutionId, env.AUTH_TOKEN_SECRET ?? "");
 
     return {
       authenticated: true,
       studentId: student.id,
       institutionId: challenge.institutionId,
-      consumedAt
+      consumedAt,
+      accessToken: authToken.token,
+      expiresAt: authToken.expiresAt
     };
   }
 };
