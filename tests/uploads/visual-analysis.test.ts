@@ -26,7 +26,11 @@ describe("pdf first page visual analysis", () => {
         JSON.stringify({
           pageRenderStatus: "rendered",
           paperTone: "non_white",
-          whitePixelRatio: 0.18
+          whitePixelRatio: 0.18,
+          hasCenteredHeaderBlock: true,
+          hasHeaderTextDensity: true,
+          hasLeftRightMetaRow: true,
+          looksLikeAssessmentCoverPage: true
         }),
         {
           status: 200,
@@ -55,7 +59,11 @@ describe("pdf first page visual analysis", () => {
     expect(analysis).toEqual({
       pageRenderStatus: "rendered",
       paperTone: "non_white",
-      whitePixelRatio: 0.18
+      whitePixelRatio: 0.18,
+      hasCenteredHeaderBlock: true,
+      hasHeaderTextDensity: true,
+      hasLeftRightMetaRow: true,
+      looksLikeAssessmentCoverPage: true
     });
   });
 });

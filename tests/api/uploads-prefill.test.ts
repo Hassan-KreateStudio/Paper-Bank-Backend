@@ -35,6 +35,10 @@ type UploadPrefillResponse = {
       pageRenderStatus: "rendered" | "failed";
       paperTone: "white" | "non_white" | "unknown";
       whitePixelRatio: number | null;
+      hasCenteredHeaderBlock: boolean;
+      hasHeaderTextDensity: boolean;
+      hasLeftRightMetaRow: boolean;
+      looksLikeAssessmentCoverPage: boolean;
     };
     rules: string[];
     checks: Array<{
@@ -72,14 +76,16 @@ const createExamPdfFile = async (
   await createPdfFixture({
     name,
     pageColor,
-    lines: [
-      "Strathmore University",
-      "Unit Code: BIT 2205",
-      "Unit Name: Database Systems",
-      "Paper Type: End Semester Exam",
-      "Academic Year: 2023/2024",
-      "Date: 11th May 2026",
-      "Time: 1 Hour"
+    textBlocks: [
+      { text: "Strathmore University", x: 297, y: 760, align: "center", fontSize: 15 },
+      { text: "School of Computing and Engineering Sciences", x: 297, y: 730, align: "center", fontSize: 13 },
+      { text: "Bachelor of Business Information Technology", x: 297, y: 705, align: "center", fontSize: 12 },
+      { text: "Unit Code: BIT 2205", x: 297, y: 675, align: "center", fontSize: 14 },
+      { text: "Unit Name: Database Systems", x: 297, y: 648, align: "center", fontSize: 14 },
+      { text: "Paper Type: End Semester Exam", x: 297, y: 620, align: "center", fontSize: 13 },
+      { text: "Academic Year: 2023/2024", x: 297, y: 594, align: "center", fontSize: 12 },
+      { text: "Date: 11th May 2026", x: 72, y: 560, align: "left", fontSize: 13 },
+      { text: "Time: 1 Hour", x: 520, y: 560, align: "right", fontSize: 13 }
     ]
   });
 
@@ -87,12 +93,14 @@ const createAssignmentPdfFile = async (name = "assignment.pdf") =>
   await createPdfFixture({
     name,
     pageColor: "yellow",
-    lines: [
-      "Strathmore University",
-      "Unit Code: BIT 2205",
-      "Unit Name: Database Systems",
-      "Paper Type: Assignment",
-      "Academic Year: 2023/2024"
+    textBlocks: [
+      { text: "Strathmore University", x: 297, y: 760, align: "center", fontSize: 15 },
+      { text: "School of Computing and Engineering Sciences", x: 297, y: 730, align: "center", fontSize: 13 },
+      { text: "Unit Code: BIT 2205", x: 297, y: 690, align: "center", fontSize: 14 },
+      { text: "Unit Name: Database Systems", x: 297, y: 662, align: "center", fontSize: 14 },
+      { text: "Paper Type: Assignment", x: 297, y: 634, align: "center", fontSize: 13 },
+      { text: "Date: 11th May 2026", x: 72, y: 590, align: "left", fontSize: 13 },
+      { text: "Time: 1 Hour", x: 520, y: 590, align: "right", fontSize: 13 }
     ]
   });
 
@@ -131,6 +139,10 @@ describe("upload prefill route", () => {
     expect(body.file.hash).toBeString();
     expect(body.review.visual.pageRenderStatus).toBe("rendered");
     expect(body.review.visual.paperTone).toBe("non_white");
+    expect(body.review.visual.hasCenteredHeaderBlock).toBe(true);
+    expect(body.review.visual.hasHeaderTextDensity).toBe(true);
+    expect(body.review.visual.hasLeftRightMetaRow).toBe(true);
+    expect(body.review.visual.looksLikeAssessmentCoverPage).toBe(true);
     expect(body.extracted.metadata.institutionName).toBe("Strathmore University");
     expect(body.extracted.metadata.unitCode).toBe("BIT 2205");
     expect(body.extracted.metadata.unitName).toBe("Database Systems");
@@ -138,6 +150,7 @@ describe("upload prefill route", () => {
     expect(body.extracted.metadata.academicYear).toBe("2023/2024");
     expect(body.review.documentKind).toBe("strathmore_cat_or_exam");
     expect(body.review.rules).toEqual([
+      "Document should visually look like a Strathmore assessment cover page.",
       "Document text should mention Strathmore University.",
       "Document should clearly be a CAT or exam.",
       "Unit code should be present as a labeled value or match an uppercase code plus four digits.",
@@ -146,6 +159,11 @@ describe("upload prefill route", () => {
       "Document should include a time or duration.",
       "CAT and exam papers should be printed on non-white paper."
     ]);
+    expect(body.review.checks).toContainEqual({
+      code: "assessment_cover_visual",
+      status: "pass",
+      message: "Rendered first page looks like a Strathmore assessment cover page."
+    });
     expect(body.review.checks).toContainEqual({
       code: "paper_color_non_white",
       status: "pass",
@@ -266,6 +284,7 @@ describe("upload prefill route", () => {
     expect(response.status).toBe(200);
     expect(body.extracted.metadata.paperType).toBe("assignment");
     expect(body.review.documentKind).toBe("not_strathmore_cat_or_exam");
+    expect(body.review.visual.looksLikeAssessmentCoverPage).toBe(true);
     expect(body.review.checks).toContainEqual({
       code: "assessment_kind_match",
       status: "warn",
@@ -302,6 +321,10 @@ describe("upload prefill route", () => {
 
     expect(response.status).toBe(200);
     expect(body.review.visual.paperTone).toBe("white");
+    expect(body.review.visual.hasCenteredHeaderBlock).toBe(true);
+    expect(body.review.visual.hasHeaderTextDensity).toBe(true);
+    expect(body.review.visual.hasLeftRightMetaRow).toBe(true);
+    expect(body.review.visual.looksLikeAssessmentCoverPage).toBe(false);
     expect(body.extracted.textPreview).toBe("");
     expect(body.review.documentKind).toBe("not_strathmore_cat_or_exam");
     expect(body.review.checks).toContainEqual({

@@ -5,8 +5,15 @@ import { tmpdir } from "node:os";
 
 type PdfFixtureOptions = {
   name: string;
-  lines: string[];
   pageColor: "white" | "yellow";
+  lines?: string[];
+  textBlocks?: Array<{
+    text: string;
+    x: number;
+    y: number;
+    align?: "left" | "center" | "right";
+    fontSize?: number;
+  }>;
 };
 
 const getRuntimePath = (relativePath: string) => {
@@ -43,7 +50,7 @@ const resolvePythonPath = () => {
   return "python3";
 };
 
-export const createPdfFixture = async ({ name, lines, pageColor }: PdfFixtureOptions) => {
+export const createPdfFixture = async ({ name, lines, pageColor, textBlocks }: PdfFixtureOptions) => {
   const pythonPath = resolvePythonPath();
   const tempDir = await mkdtemp(join(tmpdir(), "paper-bank-pdf-fixture-"));
   const pdfPath = join(tempDir, name);
@@ -57,7 +64,8 @@ from reportlab.pdfgen import canvas
 output_path = sys.argv[1]
 payload = json.loads(sys.argv[2])
 background = payload["background"]
-lines = payload["lines"]
+lines = payload.get("lines", [])
+text_blocks = payload.get("textBlocks", [])
 
 pdf = canvas.Canvas(output_path, pagesize=A4, pageCompression=0)
 page_width, page_height = A4
@@ -70,12 +78,21 @@ for line in lines:
     pdf.drawString(72, y, line)
     y -= 24
 
+for block in text_blocks:
+    pdf.setFont("Helvetica", block.get("fontSize", 12))
+    if block.get("align") == "center":
+        pdf.drawCentredString(block["x"], block["y"], block["text"])
+    elif block.get("align") == "right":
+        pdf.drawRightString(block["x"], block["y"], block["text"])
+    else:
+        pdf.drawString(block["x"], block["y"], block["text"])
+
 pdf.showPage()
 pdf.save()
 `;
 
   const background = pageColor === "yellow" ? [0.96, 0.92, 0.60] : [1.0, 1.0, 1.0];
-  const process = Bun.spawn([pythonPath, "-c", script, pdfPath, JSON.stringify({ background, lines })], {
+  const process = Bun.spawn([pythonPath, "-c", script, pdfPath, JSON.stringify({ background, lines, textBlocks })], {
     stdout: "pipe",
     stderr: "pipe"
   });

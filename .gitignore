@@ -4,3 +4,4 @@ bun.lockb
 .dev.vars
 .wrangler
 dist
+.DS_Store

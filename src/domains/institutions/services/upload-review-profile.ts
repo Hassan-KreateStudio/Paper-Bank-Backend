@@ -74,6 +74,7 @@ const normalizePaperType = (text: string) => {
 };
 
 const strathmoreReviewRules = [
+  "Document should visually look like a Strathmore assessment cover page.",
   "Document text should mention Strathmore University.",
   "Document should clearly be a CAT or exam.",
   "Unit code should be present as a labeled value or match an uppercase code plus four digits.",
@@ -98,7 +99,9 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
     const hasTime = /time:\s*.+|duration:\s*.+|1\s*hour|2\s*hours|3\s*hours/i.test(text);
     const isAcceptedAssessmentType = paperType === "cat" || paperType === "exam";
     const hasNonWhitePaper = visual.paperTone === "non_white";
+    const hasAssessmentCoverLayout = visual.looksLikeAssessmentCoverPage;
     const isStrathmoreAssessment =
+      hasAssessmentCoverLayout &&
       Boolean(institutionName) &&
       isAcceptedAssessmentType &&
       Boolean(unitCode) &&
@@ -109,6 +112,13 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
 
     const checks: UploadReviewCheck[] = [
       {
+        code: "assessment_cover_visual",
+        status: hasAssessmentCoverLayout ? "pass" : "warn",
+        message: hasAssessmentCoverLayout
+          ? "Rendered first page looks like a Strathmore assessment cover page."
+          : "Rendered first page does not clearly look like a Strathmore assessment cover page."
+      },
+      {
         code: "paper_color_non_white",
         status: hasNonWhitePaper ? "pass" : "warn",
         message: hasNonWhitePaper
@@ -116,6 +126,27 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
           : visual.pageRenderStatus === "failed"
             ? "First page rendering failed, so paper color could not be verified."
             : "Rendered first page appears to be on white paper."
+      },
+      {
+        code: "centered_header_block",
+        status: visual.hasCenteredHeaderBlock ? "pass" : "warn",
+        message: visual.hasCenteredHeaderBlock
+          ? "Rendered first page has a centered header block."
+          : "Rendered first page does not clearly show a centered header block."
+      },
+      {
+        code: "header_text_density",
+        status: visual.hasHeaderTextDensity ? "pass" : "warn",
+        message: visual.hasHeaderTextDensity
+          ? "Rendered first page has dense header content."
+          : "Rendered first page header looks too sparse."
+      },
+      {
+        code: "left_right_meta_row",
+        status: visual.hasLeftRightMetaRow ? "pass" : "warn",
+        message: visual.hasLeftRightMetaRow
+          ? "Rendered first page has a left-right date/time style row."
+          : "Rendered first page does not clearly show a left-right date/time style row."
       },
       {
         code: "institution_match",
