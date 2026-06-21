@@ -75,6 +75,7 @@ const normalizePaperType = (text: string) => {
 
 const strathmoreReviewRules = [
   "Document should visually look like a Strathmore assessment cover page.",
+  "Document should show Strathmore header branding on the first page.",
   "Document text should mention Strathmore University.",
   "Document should clearly be a CAT or exam.",
   "Unit code should be present as a labeled value or match an uppercase code plus four digits.",
@@ -99,8 +100,10 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
     const hasTime = /time:\s*.+|duration:\s*.+|1\s*hour|2\s*hours|3\s*hours/i.test(text);
     const isAcceptedAssessmentType = paperType === "cat" || paperType === "exam";
     const hasNonWhitePaper = visual.paperTone === "non_white";
+    const hasStrathmoreHeaderBranding = visual.hasStrathmoreHeaderBranding;
     const hasAssessmentCoverLayout = visual.looksLikeAssessmentCoverPage;
     const isStrathmoreAssessment =
+      hasStrathmoreHeaderBranding &&
       hasAssessmentCoverLayout &&
       Boolean(institutionName) &&
       isAcceptedAssessmentType &&
@@ -111,6 +114,13 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
       hasNonWhitePaper;
 
     const checks: UploadReviewCheck[] = [
+      {
+        code: "strathmore_header_branding",
+        status: hasStrathmoreHeaderBranding ? "pass" : "warn",
+        message: hasStrathmoreHeaderBranding
+          ? "Rendered first page matches the Strathmore header branding pattern."
+          : "Rendered first page does not clearly match the Strathmore header branding pattern."
+      },
       {
         code: "assessment_cover_visual",
         status: hasAssessmentCoverLayout ? "pass" : "warn",

@@ -35,6 +35,8 @@ type UploadPrefillResponse = {
       pageRenderStatus: "rendered" | "failed";
       paperTone: "white" | "non_white" | "unknown";
       whitePixelRatio: number | null;
+      hasStrathmoreHeaderBranding: boolean;
+      headerBrandingSimilarityScore: number | null;
       hasCenteredHeaderBlock: boolean;
       hasHeaderTextDensity: boolean;
       hasLeftRightMetaRow: boolean;
@@ -56,12 +58,15 @@ type UploadPrefillResponse = {
 };
 
 const authSecret = "super-secret-auth-token";
+const originalFetch = globalThis.fetch;
 
 const createEnv = (db: D1Database) => ({
   APP_ENV: "test",
   WORKERS_AI_MODEL: "@cf/baai/bge-base-en-v1.5",
   AUTH_TOKEN_SECRET: authSecret,
-  DB: db
+  DB: db,
+  PDF_RENDERER_URL: "https://renderer.example.com/analyze-pdf",
+  PDF_RENDERER_TOKEN: "renderer-secret"
 });
 
 const createAccessToken = async (studentId: string, institutionId = "inst_strathmore") => {
@@ -104,8 +109,31 @@ const createAssignmentPdfFile = async (name = "assignment.pdf") =>
     ]
   });
 
+const useRendererResponse = (responseBody: Record<string, unknown>) => {
+  globalThis.fetch = (async () => {
+    return new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: {
+        "content-type": "application/json"
+      }
+    });
+  }) as unknown as typeof fetch;
+};
+
 describe("upload prefill route", () => {
   it("extracts Strathmore metadata from a non-white uploaded pdf", async () => {
+    useRendererResponse({
+      pageRenderStatus: "rendered",
+      paperTone: "non_white",
+      whitePixelRatio: 0.18,
+      hasStrathmoreHeaderBranding: true,
+      headerBrandingSimilarityScore: 0.83,
+      hasCenteredHeaderBlock: true,
+      hasHeaderTextDensity: true,
+      hasLeftRightMetaRow: true,
+      looksLikeAssessmentCoverPage: true
+    });
+
     const testDb = createTestD1();
     testDb.seedInstitution();
     const student = testDb.seedStudent({
@@ -139,6 +167,7 @@ describe("upload prefill route", () => {
     expect(body.file.hash).toBeString();
     expect(body.review.visual.pageRenderStatus).toBe("rendered");
     expect(body.review.visual.paperTone).toBe("non_white");
+    expect(body.review.visual.hasStrathmoreHeaderBranding).toBe(true);
     expect(body.review.visual.hasCenteredHeaderBlock).toBe(true);
     expect(body.review.visual.hasHeaderTextDensity).toBe(true);
     expect(body.review.visual.hasLeftRightMetaRow).toBe(true);
@@ -151,6 +180,7 @@ describe("upload prefill route", () => {
     expect(body.review.documentKind).toBe("strathmore_cat_or_exam");
     expect(body.review.rules).toEqual([
       "Document should visually look like a Strathmore assessment cover page.",
+      "Document should show Strathmore header branding on the first page.",
       "Document text should mention Strathmore University.",
       "Document should clearly be a CAT or exam.",
       "Unit code should be present as a labeled value or match an uppercase code plus four digits.",
@@ -159,6 +189,11 @@ describe("upload prefill route", () => {
       "Document should include a time or duration.",
       "CAT and exam papers should be printed on non-white paper."
     ]);
+    expect(body.review.checks).toContainEqual({
+      code: "strathmore_header_branding",
+      status: "pass",
+      message: "Rendered first page matches the Strathmore header branding pattern."
+    });
     expect(body.review.checks).toContainEqual({
       code: "assessment_cover_visual",
       status: "pass",
@@ -176,6 +211,7 @@ describe("upload prefill route", () => {
     });
     expect(body.duplicateCheck.isDuplicate).toBe(false);
     expect(body.duplicateCheck.reason).toBe("none");
+    globalThis.fetch = originalFetch;
   }, 15000);
 
   it("rejects requests without a pdf file", async () => {
@@ -211,6 +247,18 @@ describe("upload prefill route", () => {
   });
 
   it("flags an exact duplicate by file hash", async () => {
+    useRendererResponse({
+      pageRenderStatus: "rendered",
+      paperTone: "non_white",
+      whitePixelRatio: 0.18,
+      hasStrathmoreHeaderBranding: true,
+      headerBrandingSimilarityScore: 0.83,
+      hasCenteredHeaderBlock: true,
+      hasHeaderTextDensity: true,
+      hasLeftRightMetaRow: true,
+      looksLikeAssessmentCoverPage: true
+    });
+
     const testDb = createTestD1();
     testDb.seedInstitution();
     const student = testDb.seedStudent({
@@ -252,9 +300,22 @@ describe("upload prefill route", () => {
     expect(body.duplicateCheck.reason).toBe("file_hash");
     expect(body.duplicateCheck.matchedPaperId).toBe(seededPaper.id);
     expect(body.duplicateCheck.matchedSubmissionId).toBeNull();
+    globalThis.fetch = originalFetch;
   }, 15000);
 
   it("classifies non exam uploads as not a Strathmore CAT or exam", async () => {
+    useRendererResponse({
+      pageRenderStatus: "rendered",
+      paperTone: "non_white",
+      whitePixelRatio: 0.18,
+      hasStrathmoreHeaderBranding: true,
+      headerBrandingSimilarityScore: 0.83,
+      hasCenteredHeaderBlock: true,
+      hasHeaderTextDensity: true,
+      hasLeftRightMetaRow: true,
+      looksLikeAssessmentCoverPage: true
+    });
+
     const testDb = createTestD1();
     testDb.seedInstitution();
     const student = testDb.seedStudent({
@@ -290,9 +351,22 @@ describe("upload prefill route", () => {
       status: "warn",
       message: "Document is not clearly a Strathmore CAT or exam."
     });
+    globalThis.fetch = originalFetch;
   }, 15000);
 
   it("stops early when the rendered page appears white", async () => {
+    useRendererResponse({
+      pageRenderStatus: "rendered",
+      paperTone: "white",
+      whitePixelRatio: 0.97,
+      hasStrathmoreHeaderBranding: true,
+      headerBrandingSimilarityScore: 0.83,
+      hasCenteredHeaderBlock: true,
+      hasHeaderTextDensity: true,
+      hasLeftRightMetaRow: true,
+      looksLikeAssessmentCoverPage: false
+    });
+
     const testDb = createTestD1();
     testDb.seedInstitution();
     const student = testDb.seedStudent({
@@ -332,6 +406,44 @@ describe("upload prefill route", () => {
       status: "warn",
       message: "Rendered first page appears to be on white paper."
     });
+    globalThis.fetch = originalFetch;
+  }, 15000);
+
+  it("fails clearly when the renderer url is missing", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution();
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    formData.set("file", await createExamPdfFile());
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      {
+        APP_ENV: "test",
+        WORKERS_AI_MODEL: "@cf/baai/bge-base-en-v1.5",
+        AUTH_TOKEN_SECRET: authSecret,
+        DB: testDb.db
+      }
+    );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(response.status).toBe(500);
+    expect(body.success).toBe(false);
+    expect(body.message).toContain("PDF renderer URL is not configured");
   }, 15000);
 
   it("rejects uploads when the institution has no review profile", async () => {

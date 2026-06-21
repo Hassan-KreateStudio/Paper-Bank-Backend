@@ -14,6 +14,13 @@ type PdfFixtureOptions = {
     align?: "left" | "center" | "right";
     fontSize?: number;
   }>;
+  imageBlocks?: Array<{
+    path: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
 };
 
 const getRuntimePath = (relativePath: string) => {
@@ -50,7 +57,7 @@ const resolvePythonPath = () => {
   return "python3";
 };
 
-export const createPdfFixture = async ({ name, lines, pageColor, textBlocks }: PdfFixtureOptions) => {
+export const createPdfFixture = async ({ name, lines, pageColor, textBlocks, imageBlocks }: PdfFixtureOptions) => {
   const pythonPath = resolvePythonPath();
   const tempDir = await mkdtemp(join(tmpdir(), "paper-bank-pdf-fixture-"));
   const pdfPath = join(tempDir, name);
@@ -59,6 +66,7 @@ import json
 import sys
 from reportlab.lib.colors import Color
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 output_path = sys.argv[1]
@@ -66,6 +74,7 @@ payload = json.loads(sys.argv[2])
 background = payload["background"]
 lines = payload.get("lines", [])
 text_blocks = payload.get("textBlocks", [])
+image_blocks = payload.get("imageBlocks", [])
 
 pdf = canvas.Canvas(output_path, pagesize=A4, pageCompression=0)
 page_width, page_height = A4
@@ -87,12 +96,22 @@ for block in text_blocks:
     else:
         pdf.drawString(block["x"], block["y"], block["text"])
 
+for block in image_blocks:
+    pdf.drawImage(
+        ImageReader(block["path"]),
+        block["x"],
+        block["y"],
+        width=block["width"],
+        height=block["height"],
+        mask="auto"
+    )
+
 pdf.showPage()
 pdf.save()
 `;
 
   const background = pageColor === "yellow" ? [0.96, 0.92, 0.60] : [1.0, 1.0, 1.0];
-  const process = Bun.spawn([pythonPath, "-c", script, pdfPath, JSON.stringify({ background, lines, textBlocks })], {
+  const process = Bun.spawn([pythonPath, "-c", script, pdfPath, JSON.stringify({ background, lines, textBlocks, imageBlocks })], {
     stdout: "pipe",
     stderr: "pipe"
   });
