@@ -1,0 +1,96 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+type PdfFixtureOptions = {
+  name: string;
+  lines: string[];
+  pageColor: "white" | "yellow";
+};
+
+const getRuntimePath = (relativePath: string) => {
+  const home = process.env.HOME;
+
+  if (!home) {
+    return null;
+  }
+
+  return join(home, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", relativePath);
+};
+
+const resolvePythonPath = () => {
+  const candidates = [
+    process.env.PDF_ANALYZER_PYTHON_PATH ?? "",
+    getRuntimePath(join("python", "bin", "python3")) ?? "",
+    "python3"
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    if (!candidate.includes("/")) {
+      return candidate;
+    }
+
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "python3";
+};
+
+export const createPdfFixture = async ({ name, lines, pageColor }: PdfFixtureOptions) => {
+  const pythonPath = resolvePythonPath();
+  const tempDir = await mkdtemp(join(tmpdir(), "paper-bank-pdf-fixture-"));
+  const pdfPath = join(tempDir, name);
+  const script = `
+import json
+import sys
+from reportlab.lib.colors import Color
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+
+output_path = sys.argv[1]
+payload = json.loads(sys.argv[2])
+background = payload["background"]
+lines = payload["lines"]
+
+pdf = canvas.Canvas(output_path, pagesize=A4, pageCompression=0)
+page_width, page_height = A4
+pdf.setFillColor(Color(*background))
+pdf.rect(0, 0, page_width, page_height, fill=1, stroke=0)
+pdf.setFillColorRGB(0, 0, 0)
+
+y = page_height - 72
+for line in lines:
+    pdf.drawString(72, y, line)
+    y -= 24
+
+pdf.showPage()
+pdf.save()
+`;
+
+  const background = pageColor === "yellow" ? [0.96, 0.92, 0.60] : [1.0, 1.0, 1.0];
+  const process = Bun.spawn([pythonPath, "-c", script, pdfPath, JSON.stringify({ background, lines })], {
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+  const exitCode = await process.exited;
+
+  if (exitCode !== 0) {
+    const errorText = await new Response(process.stderr).text();
+    await rm(tempDir, { recursive: true, force: true });
+    throw new Error(errorText || "Failed to create PDF fixture.");
+  }
+
+  const bytes = await readFile(pdfPath);
+  await rm(tempDir, { recursive: true, force: true });
+
+  return new File([bytes], name, {
+    type: "application/pdf"
+  });
+};

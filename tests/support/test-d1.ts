@@ -6,7 +6,10 @@ const migrationFiles = [
   "migrations/d1/0001_create_institutions.sql",
   "migrations/d1/0002_create_students.sql",
   "migrations/d1/0003_create_auth_challenges.sql",
-  "migrations/d1/0005_make_auth_challenge_student_optional.sql"
+  "migrations/d1/0005_make_auth_challenge_student_optional.sql",
+  "migrations/d1/0006_create_upload_submissions.sql",
+  "migrations/d1/0007_create_papers.sql",
+  "migrations/d1/0008_create_review_decisions.sql"
 ];
 
 class TestD1Statement {
@@ -184,6 +187,158 @@ export const createTestD1 = () => {
       | null;
   };
 
+  const seedPaper = (overrides?: Partial<{
+    id: string;
+    institutionId: string;
+    sourceUploadSubmissionId: string | null;
+    title: string;
+    unitCode: string;
+    unitName: string;
+    paperType: string;
+    academicYear: string;
+    status: string;
+    fileKey: string;
+    fileHash: string;
+  }>) => {
+    const now = new Date().toISOString();
+    const paper = {
+      id: overrides?.id ?? crypto.randomUUID(),
+      institutionId: overrides?.institutionId ?? "inst_strathmore",
+      sourceUploadSubmissionId: overrides?.sourceUploadSubmissionId ?? null,
+      title: overrides?.title ?? "Database Systems End Semester Exam",
+      unitCode: overrides?.unitCode ?? "BIT 2205",
+      unitName: overrides?.unitName ?? "Database Systems",
+      paperType: overrides?.paperType ?? "exam",
+      academicYear: overrides?.academicYear ?? "2023/2024",
+      status: overrides?.status ?? "available",
+      fileKey: overrides?.fileKey ?? "papers/database-systems.pdf",
+      fileHash: overrides?.fileHash ?? "existing-file-hash"
+    };
+
+    sqlite
+      .query(
+        `
+          INSERT INTO papers (
+            id,
+            institution_id,
+            source_upload_submission_id,
+            title,
+            unit_code,
+            unit_name,
+            paper_type,
+            academic_year,
+            status,
+            file_key,
+            file_hash,
+            created_at,
+            updated_at
+          )
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+        `
+      )
+      .run(
+        paper.id,
+        paper.institutionId,
+        paper.sourceUploadSubmissionId,
+        paper.title,
+        paper.unitCode,
+        paper.unitName,
+        paper.paperType,
+        paper.academicYear,
+        paper.status,
+        paper.fileKey,
+        paper.fileHash,
+        now,
+        now
+      );
+
+    return paper;
+  };
+
+  const seedUploadSubmission = (overrides?: Partial<{
+    id: string;
+    institutionId: string;
+    studentId: string;
+    title: string;
+    unitCode: string;
+    unitName: string;
+    paperType: string;
+    academicYear: string;
+    description: string | null;
+    fileKey: string;
+    fileName: string;
+    mimeType: string;
+    fileSizeBytes: number;
+    fileHash: string;
+    status: string;
+  }>) => {
+    const now = new Date().toISOString();
+    const submission = {
+      id: overrides?.id ?? crypto.randomUUID(),
+      institutionId: overrides?.institutionId ?? "inst_strathmore",
+      studentId: overrides?.studentId ?? crypto.randomUUID(),
+      title: overrides?.title ?? "Database Systems End Semester Exam",
+      unitCode: overrides?.unitCode ?? "BIT 2205",
+      unitName: overrides?.unitName ?? "Database Systems",
+      paperType: overrides?.paperType ?? "exam",
+      academicYear: overrides?.academicYear ?? "2023/2024",
+      description: overrides?.description ?? null,
+      fileKey: overrides?.fileKey ?? "uploads/database-systems.pdf",
+      fileName: overrides?.fileName ?? "database-systems.pdf",
+      mimeType: overrides?.mimeType ?? "application/pdf",
+      fileSizeBytes: overrides?.fileSizeBytes ?? 1024,
+      fileHash: overrides?.fileHash ?? "existing-submission-hash",
+      status: overrides?.status ?? "submitted"
+    };
+
+    sqlite
+      .query(
+        `
+          INSERT INTO upload_submissions (
+            id,
+            institution_id,
+            student_id,
+            title,
+            unit_code,
+            unit_name,
+            paper_type,
+            academic_year,
+            description,
+            file_key,
+            file_name,
+            mime_type,
+            file_size_bytes,
+            file_hash,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+        `
+      )
+      .run(
+        submission.id,
+        submission.institutionId,
+        submission.studentId,
+        submission.title,
+        submission.unitCode,
+        submission.unitName,
+        submission.paperType,
+        submission.academicYear,
+        submission.description,
+        submission.fileKey,
+        submission.fileName,
+        submission.mimeType,
+        submission.fileSizeBytes,
+        submission.fileHash,
+        submission.status,
+        now,
+        now
+      );
+
+    return submission;
+  };
+
   const expireChallenge = (challengeId: string) => {
     sqlite
       .query(
@@ -205,6 +360,8 @@ export const createTestD1 = () => {
     close,
     seedInstitution,
     seedStudent,
+    seedPaper,
+    seedUploadSubmission,
     getStudent,
     expireChallenge
   };
