@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import app from "../../renderer/src/index";
+import { app } from "../../renderer/src/index";
 import { createPdfFixture } from "../support/pdf-fixture";
 
 const originalToken = process.env.RENDERER_AUTH_TOKEN;

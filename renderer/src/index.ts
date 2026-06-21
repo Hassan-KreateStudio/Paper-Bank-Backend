@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { analyzePdf } from "./visual-analysis";
 
-const app = new Hono();
+export const app = new Hono();
 
 const getBearerToken = (authorizationHeader: string | undefined) => {
   if (!authorizationHeader) {
@@ -64,13 +64,7 @@ app.post("/analyze-pdf", async (c) => {
 
 const port = Number(process.env.PORT ?? "3010");
 
-export default app;
-
-if (import.meta.main) {
-  Bun.serve({
-    fetch: app.fetch,
-    port
-  });
-
-  console.log(`paper-bank-renderer listening on ${port}`);
-}
+export default {
+  port,
+  fetch: app.fetch
+};
