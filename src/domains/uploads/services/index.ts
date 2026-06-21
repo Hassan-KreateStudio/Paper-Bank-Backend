@@ -4,17 +4,13 @@ import { uploadsRepository } from "../repository";
 import { AppError } from "../../../lib/errors";
 import type { EnvBindings } from "../../../lib/app-env";
 import { analyzePdfFirstPageVisuals } from "./visual-analysis";
+import { putPaperFile } from "../../../platform/storage";
+import { createTextPreview, extractPdfText, looksLikePdf } from "./pdf-text";
 
 const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024;
-const PDF_SIGNATURE = "%PDF-";
 
 const ensurePdfFile = (file: File, fileText: string) => {
-  const looksLikePdf =
-    file.type === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf") ||
-    fileText.startsWith(PDF_SIGNATURE);
-
-  if (!looksLikePdf) {
+  if (!looksLikePdf(file, fileText)) {
     throw new AppError("A pdf file is required.", 400);
   }
 
@@ -35,30 +31,27 @@ const createFileHash = async (fileBytes: ArrayBuffer) => {
     .join("");
 };
 
-const decodePdfTextFragment = (fragment: string) => {
-  return fragment
-    .replace(/\\n/g, " ")
-    .replace(/\\r/g, " ")
-    .replace(/\\t/g, " ")
-    .replace(/\\\(/g, "(")
-    .replace(/\\\)/g, ")")
-    .replace(/\\\\/g, "\\");
+const buildUploadTitle = (unitName: string, paperType: string, academicYear: string) => {
+  const normalizedPaperType = paperType.trim().toUpperCase();
+  return `${unitName.trim()} ${normalizedPaperType} ${academicYear.trim()}`.trim();
 };
 
-const extractPdfText = (fileText: string) => {
-  const fragments = Array.from(fileText.matchAll(/\(([^()]*)\)/g), (match) =>
-    decodePdfTextFragment(match[1] ?? "")
-  );
-
-  return fragments.join(" ").replace(/\s+/g, " ").trim();
+const sanitizePathSegment = (value: string) => {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
 };
 
-const createTextPreview = (text: string) => {
-  if (!text) {
-    return "";
+const requireConfirmField = (value: string | null | undefined, label: string) => {
+  const normalizedValue = value?.trim();
+
+  if (!normalizedValue) {
+    throw new AppError(`${label} is required.`, 400);
   }
 
-  return text.slice(0, 280);
+  return normalizedValue;
 };
 
 export const uploadsService = {
@@ -239,6 +232,92 @@ export const uploadsService = {
         matchedPaperId: null,
         matchedSubmissionId: null
       }
+    };
+  },
+  confirmUpload: async (
+    db: D1Database,
+    institutionId: string,
+    studentId: string,
+    file: File,
+    input: {
+      unitCode: string | null | undefined;
+      unitName: string | null | undefined;
+      paperType: string | null | undefined;
+      academicYear: string | null | undefined;
+      title?: string | null | undefined;
+      description?: string | null | undefined;
+    },
+    env: EnvBindings
+  ) => {
+    const fileBytes = await file.arrayBuffer();
+    const fileText = new TextDecoder().decode(fileBytes);
+
+    ensurePdfFile(file, fileText);
+
+    const unitCode = requireConfirmField(input.unitCode, "Unit code");
+    const unitName = requireConfirmField(input.unitName, "Unit name");
+    const paperType = requireConfirmField(input.paperType, "Paper type").toLowerCase();
+    const academicYear = requireConfirmField(input.academicYear, "Academic year");
+    const title = input.title?.trim() || buildUploadTitle(unitName, paperType, academicYear);
+    const description = input.description?.trim() || null;
+    const fileHash = await createFileHash(fileBytes);
+
+    const matchedPaperByHash = await papersRepository.findByFileHash(db, institutionId, fileHash);
+
+    if (matchedPaperByHash) {
+      throw new AppError("This PDF already exists as an approved paper.", 409);
+    }
+
+    const matchedSubmissionByHash = await uploadsRepository.findByFileHash(db, institutionId, fileHash);
+
+    if (matchedSubmissionByHash) {
+      throw new AppError("This PDF has already been submitted.", 409);
+    }
+
+    const submissionId = crypto.randomUUID();
+    const fileKey = [
+      institutionId,
+      "upload-submissions",
+      submissionId,
+      sanitizePathSegment(file.name.replace(/\.pdf$/i, "")) || "paper"
+    ].join("/") + ".pdf";
+
+    await putPaperFile(env, fileKey, fileBytes, {
+      httpMetadata: {
+        contentType: file.type || "application/pdf",
+        contentDisposition: `inline; filename="${file.name}"`
+      },
+      customMetadata: {
+        institutionId,
+        studentId,
+        kind: "upload_submission"
+      }
+    });
+
+    const submission = await uploadsRepository.create(db, {
+      id: submissionId,
+      institutionId,
+      studentId,
+      title,
+      unitCode,
+      unitName,
+      paperType,
+      academicYear,
+      description,
+      fileKey,
+      fileName: file.name,
+      mimeType: file.type || "application/pdf",
+      fileSizeBytes: file.size,
+      fileHash,
+      status: "submitted"
+    });
+
+    if (!submission) {
+      throw new AppError("Failed to create upload submission.", 500);
+    }
+
+    return {
+      submission
     };
   },
   requestUpload: async () => null

@@ -10,6 +10,7 @@ export type Paper = {
   status: string;
   fileKey: string;
   fileHash: string;
+  extractedText: string | null;
   createdAt: string;
   updatedAt: string;
 };

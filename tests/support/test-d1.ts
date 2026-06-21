@@ -9,7 +9,8 @@ const migrationFiles = [
   "migrations/d1/0005_make_auth_challenge_student_optional.sql",
   "migrations/d1/0006_create_upload_submissions.sql",
   "migrations/d1/0007_create_papers.sql",
-  "migrations/d1/0008_create_review_decisions.sql"
+  "migrations/d1/0008_create_review_decisions.sql",
+  "migrations/d1/0009_add_paper_search_index.sql"
 ];
 
 class TestD1Statement {
@@ -199,6 +200,7 @@ export const createTestD1 = () => {
     status: string;
     fileKey: string;
     fileHash: string;
+    extractedText: string | null;
   }>) => {
     const now = new Date().toISOString();
     const paper = {
@@ -212,7 +214,8 @@ export const createTestD1 = () => {
       academicYear: overrides?.academicYear ?? "2023/2024",
       status: overrides?.status ?? "available",
       fileKey: overrides?.fileKey ?? "papers/database-systems.pdf",
-      fileHash: overrides?.fileHash ?? "existing-file-hash"
+      fileHash: overrides?.fileHash ?? "existing-file-hash",
+      extractedText: overrides?.extractedText ?? null
     };
 
     sqlite
@@ -230,10 +233,11 @@ export const createTestD1 = () => {
             status,
             file_key,
             file_hash,
+            extracted_text,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
         `
       )
       .run(
@@ -248,6 +252,7 @@ export const createTestD1 = () => {
         paper.status,
         paper.fileKey,
         paper.fileHash,
+        paper.extractedText,
         now,
         now
       );

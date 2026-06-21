@@ -27,3 +27,40 @@ uploadRoutes.post("/prefill", async (c) => {
     ...prefill
   });
 });
+
+uploadRoutes.post("/confirm", async (c) => {
+  const db = requireDb(c.env);
+  const institutionId = c.get("institutionId");
+  const studentId = c.get("studentId");
+  const formData = await c.req.formData();
+  const upload = formData.get("file");
+
+  if (!institutionId || !studentId) {
+    throw new UnauthorizedError("Authenticated student context is required.");
+  }
+
+  if (!(upload instanceof File)) {
+    throw new AppError("A pdf file is required.", 400);
+  }
+
+  const confirmation = await uploadsService.confirmUpload(
+    db,
+    institutionId,
+    studentId,
+    upload,
+    {
+      title: formData.get("title")?.toString(),
+      unitCode: formData.get("unitCode")?.toString(),
+      unitName: formData.get("unitName")?.toString(),
+      paperType: formData.get("paperType")?.toString(),
+      academicYear: formData.get("academicYear")?.toString(),
+      description: formData.get("description")?.toString()
+    },
+    c.env
+  );
+
+  return c.json({
+    success: true,
+    ...confirmation
+  });
+});
