@@ -13,3 +13,7 @@ binding = "DB"
 database_name = "paper-bank"
 database_id = "84f7eb2f-f519-43aa-a3be-f66a0630db47"
 migrations_dir = "migrations/d1"
+
+[[r2_buckets]]
+binding = "PAPERS_BUCKET"
+bucket_name = "paper-bank-documents"
