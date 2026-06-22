@@ -1,8 +1,8 @@
 import type { MiddlewareHandler } from "hono";
-import { studentsRepository } from "../domains/students/repository";
-import { verifyAuthToken } from "../domains/auth/token";
-import { AppError, UnauthorizedError } from "../lib/errors";
-import { getCached, setCached } from "../platform/cache";
+import { studentsRepository } from "../../domains/students/repository";
+import { verifyAuthToken } from "../../domains/auth/token";
+import { AppError, UnauthorizedError } from "../../lib/errors";
+import { getCached, setCached } from "../../platform/cache";
 
 const AUTH_SESSION_CACHE_TTL_SECONDS = 60;
 
@@ -25,18 +25,10 @@ const getBearerToken = (authorizationHeader: string | undefined) => {
   return token;
 };
 
-export const authMiddleware: MiddlewareHandler = async (c, next) => {
-  if (c.req.path === "/api/auth/challenge" || c.req.path === "/api/auth/verify") {
-    await next();
-    return;
-  }
-
-  const token = getBearerToken(c.req.header("authorization"));
-
-  if (!token) {
-    throw new UnauthorizedError("A valid bearer token is required.");
-  }
-
+const resolveAuthenticatedStudent = async (
+  c: Parameters<MiddlewareHandler>[0],
+  token: string
+) => {
   const db = c.env.DB;
 
   if (!db) {
@@ -49,7 +41,6 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
   if (cachedSession) {
     c.set("studentId", cachedSession.studentId);
     c.set("institutionId", cachedSession.institutionId);
-    await next();
     return;
   }
 
@@ -73,5 +64,27 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
     },
     AUTH_SESSION_CACHE_TTL_SECONDS
   );
+};
+
+export const authMiddleware: MiddlewareHandler = async (c, next) => {
+  const token = getBearerToken(c.req.header("authorization"));
+
+  if (!token) {
+    throw new UnauthorizedError("A valid bearer token is required.");
+  }
+
+  await resolveAuthenticatedStudent(c, token);
+  await next();
+};
+
+export const optionalAuthMiddleware: MiddlewareHandler = async (c, next) => {
+  const token = getBearerToken(c.req.header("authorization"));
+
+  if (!token) {
+    await next();
+    return;
+  }
+
+  await resolveAuthenticatedStudent(c, token);
   await next();
 };

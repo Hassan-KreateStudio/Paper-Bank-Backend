@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
-import { AppError } from "../lib/errors";
-import { consumeRateLimit } from "../platform/cache";
+import { AppError } from "../../lib/errors";
+import { consumeRateLimit } from "../../platform/cache";
 
 const getClientIp = (request: Request) => {
   const forwardedFor = request.headers.get("x-forwarded-for");

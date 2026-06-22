@@ -2,11 +2,16 @@ import { Hono } from "hono";
 import type { AppEnv } from "../../../lib/app-env";
 import { requireText } from "../../../lib/validation";
 import { requireDb } from "../../../platform/db";
+import { authMiddleware, rateLimitMiddleware } from "../../../middleware";
 import { authService } from "../services";
 import { studentsRepository } from "../../students/repository";
 import { UnauthorizedError } from "../../../lib/errors";
 
 export const authRoutes = new Hono<AppEnv>();
+
+authRoutes.use("/challenge", rateLimitMiddleware);
+authRoutes.use("/verify", rateLimitMiddleware);
+authRoutes.use("/session", authMiddleware);
 
 authRoutes.post("/challenge", async (c) => {
   const payload = (await c.req.json().catch(() => ({}))) as Record<string, string | undefined>;
