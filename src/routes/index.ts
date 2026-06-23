@@ -14,6 +14,7 @@ import { searchRoutes } from "../domains/search/routes";
 import { accessRoutes } from "../domains/access/routes";
 import { uploadRoutes } from "../domains/uploads/routes";
 import { reviewRoutes } from "../domains/review/routes";
+import { waitlistRoutes } from "../domains/waitlist/routes";
 
 export const routes = new Hono<AppEnv>();
 const protectedApiRoutes = new Hono<AppEnv>();
@@ -49,4 +50,5 @@ routes.route("/webhooks/payments", paymentsWebhookRoute);
 routes.route("/internal", internalAdminRoute);
 routes.route("/api/auth", authRoutes);
 routes.route("/api/institutions", institutionRoutes);
+routes.route("/api/waitlist", waitlistRoutes);
 routes.route("/api", protectedApiRoutes);

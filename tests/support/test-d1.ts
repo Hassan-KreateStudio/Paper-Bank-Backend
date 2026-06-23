@@ -10,7 +10,8 @@ const migrationFiles = [
   "migrations/d1/0006_create_upload_submissions.sql",
   "migrations/d1/0007_create_papers.sql",
   "migrations/d1/0008_create_review_decisions.sql",
-  "migrations/d1/0009_add_paper_search_index.sql"
+  "migrations/d1/0009_add_paper_search_index.sql",
+  "migrations/d1/0010_create_waitlist_entries.sql"
 ];
 
 class TestD1Statement {
