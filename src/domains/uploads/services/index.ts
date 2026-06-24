@@ -1,6 +1,6 @@
 import { NotFoundError, AppError } from "../../../lib/errors";
 import type { EnvBindings } from "../../../lib/app-env";
-import { extractUploadDocumentContent, reviewUploadDocument, type UploadReviewResult } from "../../../platform/ai/review";
+import { reviewUploadDocument, type UploadReviewResult } from "../../../platform/ai/review";
 import { institutionsRepository } from "../../institutions/repository";
 import { papersRepository } from "../../papers/repository";
 import {
@@ -9,9 +9,17 @@ import {
 } from "./document-fingerprint";
 import { uploadsRepository } from "../repository";
 import { putPaperFile } from "../../../platform/storage";
-import { looksLikePdf } from "./pdf-text";
 
 const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024;
+const PDF_SIGNATURE = "%PDF-";
+
+const looksLikePdf = (file: File, fileText: string) => {
+  return (
+    file.type === "application/pdf" ||
+    file.name.toLowerCase().endsWith(".pdf") ||
+    fileText.startsWith(PDF_SIGNATURE)
+  );
+};
 
 const ensurePdfFile = (file: File, fileText: string) => {
   if (!looksLikePdf(file, fileText)) {
@@ -183,9 +191,8 @@ export const uploadsService = {
       throw new AppError("Upload review prompt is not configured for this institution.", 500);
     }
 
-    const documentContent = await extractUploadDocumentContent(env, file);
     const review = await reviewUploadDocument(env, {
-      documentContent,
+      file,
       institutionPrompt
     });
 

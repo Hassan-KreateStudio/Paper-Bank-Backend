@@ -13,6 +13,7 @@
     "lint": "bunx tsc --project tsconfig.ci.json --noEmit --pretty false",
     "typecheck": "bunx tsc --project tsconfig.ci.json --noEmit",
     "check": "bun run lint && bun run typecheck",
+    "test:prefill:real": "bun tests/integration/uploads-prefill-real.ts",
     "start": "bun src/index.ts"
   },
   "dependencies": {

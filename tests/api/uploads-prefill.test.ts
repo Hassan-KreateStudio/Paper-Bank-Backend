@@ -141,24 +141,22 @@ const createReviewResponse = (overrides?: {
 });
 
 const createAiBinding = ({
-  markdown = "Strathmore University\nUnit Code: BIT 2205\nDatabase Systems\nCAT\nPage 1 of 1",
-  response = JSON.stringify(createReviewResponse())
+  response = JSON.stringify(createReviewResponse()),
+  onRun
 }: {
-  markdown?: string;
   response?: unknown;
+  onRun?: (model: string, payload: unknown) => void;
 } = {}) => ({
-  toMarkdown: async () => ({
-    format: "markdown",
-    data: markdown
-  }),
-  run: async () => response
+  run: async (model: string, payload: unknown) => {
+    onRun?.(model, payload);
+    return response;
+  }
 });
 
 const createEnv = (
   db: D1Database,
   overrides?: {
     AI?: {
-      toMarkdown?: (file: { name: string; blob: Blob }, options?: unknown) => Promise<unknown>;
       run?: (model: string, payload: unknown) => Promise<unknown>;
     };
   }
@@ -206,6 +204,7 @@ describe("upload prefill route", () => {
     });
     const accessToken = await createAccessToken(student.id);
     const formData = new FormData();
+    let capturedPayload: unknown;
 
     formData.set("file", await createExamPdfFile());
 
@@ -219,7 +218,11 @@ describe("upload prefill route", () => {
         body: formData
       },
       createEnv(testDb.db, {
-        AI: createAiBinding()
+        AI: createAiBinding({
+          onRun: (_, payload) => {
+            capturedPayload = payload;
+          }
+        })
       })
     );
     const body = (await response.json()) as UploadPrefillResponse;
@@ -231,6 +234,23 @@ describe("upload prefill route", () => {
     expect(body.file.name).toBe("database-systems.pdf");
     expect(body.file.mimeType).toBe("application/pdf");
     expect(body.file.hash).toBeString();
+    expect(capturedPayload).toMatchObject({
+      messages: [
+        { role: "system" },
+        {
+          role: "user",
+          content: [
+            { type: "text" },
+            {
+              type: "file",
+              file: {
+                filename: "database-systems.pdf"
+              }
+            }
+          ]
+        }
+      ]
+    });
     expect(body.duplicateCheck.isDuplicate).toBe(false);
     expect(body.duplicateCheck.reason).toBe("none");
     expect(body.modelReview).toEqual({

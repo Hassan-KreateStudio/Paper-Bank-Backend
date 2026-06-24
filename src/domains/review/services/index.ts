@@ -5,8 +5,26 @@ import { getPaperFile } from "../../../platform/storage";
 import { papersRepository } from "../../papers/repository";
 import { searchService } from "../../search/services";
 import { uploadsRepository } from "../../uploads/repository";
-import { extractPdfTextFromBytes } from "../../uploads/services/pdf-text";
 import { reviewRepository } from "../repository";
+
+const decodePdfTextFragment = (fragment: string) => {
+  return fragment
+    .replace(/\\n/g, " ")
+    .replace(/\\r/g, " ")
+    .replace(/\\t/g, " ")
+    .replace(/\\\(/g, "(")
+    .replace(/\\\)/g, ")")
+    .replace(/\\\\/g, "\\");
+};
+
+const extractPdfTextFromBytes = (fileBytes: ArrayBuffer) => {
+  const fileText = new TextDecoder().decode(fileBytes);
+  const fragments = Array.from(fileText.matchAll(/\(([^()]*)\)/g), (match) =>
+    decodePdfTextFragment(match[1] ?? "")
+  );
+
+  return fragments.join(" ").replace(/\s+/g, " ").trim();
+};
 
 export const reviewService = {
   reviewQueue: async (db: D1Database, institutionId: string) => {
@@ -48,7 +66,7 @@ export const reviewService = {
     }
 
     const fileBytes = await storedFile.arrayBuffer();
-    const { extractedText } = extractPdfTextFromBytes(fileBytes);
+    const extractedText = extractPdfTextFromBytes(fileBytes);
 
     const paper = await papersRepository.create(db, {
       id: crypto.randomUUID(),

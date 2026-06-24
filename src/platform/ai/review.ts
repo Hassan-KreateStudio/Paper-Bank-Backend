@@ -7,7 +7,7 @@ You are PaperBank's document review and metadata extraction engine.
 
 You will receive:
 1. institution-specific review guidance
-2. uploaded full-document content extracted from a PDF
+2. an uploaded PDF document
 3. no guarantee that the scan is clean or perfectly readable
 
 Your job is to:
@@ -180,7 +180,7 @@ const UPLOAD_REVIEW_JSON_SCHEMA = {
 } as const;
 
 export type UploadReviewRequest = {
-  documentContent: string;
+  file: File;
   institutionPrompt: string;
 };
 
@@ -420,45 +420,16 @@ const validateUploadReviewResult = (raw: unknown): UploadReviewResult => {
   };
 };
 
-export const extractUploadDocumentContent = async (env: EnvBindings, file: File) => {
-  const ai = env.AI as
-    | {
-        toMarkdown?: (
-          file: { name: string; blob: Blob },
-          options?: unknown
-        ) => Promise<unknown>;
-      }
-    | undefined;
+const encodeFileData = async (file: File) => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
 
-  if (!ai?.toMarkdown) {
-    throw new AppError("Workers AI document extraction is not configured.", 500);
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    const chunk = bytes.subarray(index, index + 0x8000);
+    binary += String.fromCharCode(...chunk);
   }
 
-  const result = await ai.toMarkdown(
-    {
-      name: file.name,
-      blob: file
-    },
-    {
-      conversionOptions: {
-        pdf: {
-          metadata: true
-        }
-      }
-    }
-  );
-
-  if (!isRecord(result) || result.format !== "markdown" || typeof result.data !== "string") {
-    throw new AppError("Failed to extract document content for upload review.", 502);
-  }
-
-  const content = result.data.trim();
-
-  if (!content) {
-    throw new AppError("The uploaded PDF could not be read for review.", 422);
-  }
-
-  return content;
+  return btoa(binary);
 };
 
 export const reviewUploadDocument = async (
@@ -472,6 +443,7 @@ export const reviewUploadDocument = async (
   }
 
   const model = getUploadReviewModel(env);
+  const fileData = await encodeFileData(request.file);
 
   const raw = await ai.run(model, {
     messages: [
@@ -481,11 +453,19 @@ export const reviewUploadDocument = async (
       },
       {
         role: "user",
-        content: `Institution upload review standard:\n${request.institutionPrompt}`
-      },
-      {
-        role: "user",
-        content: `Uploaded document content:\n${request.documentContent}`
+        content: [
+          {
+            type: "text",
+            text: `Institution upload review standard:\n${request.institutionPrompt}\n\nReview the attached PDF document and return the required JSON only.`
+          },
+          {
+            type: "file",
+            file: {
+              file_data: fileData,
+              filename: request.file.name
+            }
+          }
+        ]
       }
     ],
     guided_json: UPLOAD_REVIEW_JSON_SCHEMA,
