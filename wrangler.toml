@@ -6,7 +6,6 @@ account_id = "f41c4320cb7f3ed1b791e8c54ba8d4a6"
 [vars]
 APP_ENV = "development"
 WORKERS_AI_MODEL = "@cf/baai/bge-base-en-v1.5"
-PDF_RENDERER_URL = "https://paper-bank-visual-pdf-renderer.onrender.com/analyze-pdf"
 
 [[d1_databases]]
 binding = "DB"

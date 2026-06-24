@@ -4,8 +4,6 @@ export type EnvBindings = {
   AUTH_TOKEN_SECRET?: string;
   RESEND_API_KEY?: string;
   AUTH_EMAIL_FROM?: string;
-  PDF_RENDERER_URL?: string;
-  PDF_RENDERER_TOKEN?: string;
   DB?: D1Database;
   PAPERS_BUCKET?: R2Bucket;
   PAPERS_VECTOR_INDEX?: VectorizeIndex;

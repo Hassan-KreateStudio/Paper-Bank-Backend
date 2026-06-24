@@ -1,12 +1,9 @@
 import { papersRepository } from "../../papers/repository";
-import { getInstitutionUploadReviewProfile } from "../../institutions/services";
-import type { UploadReviewResult } from "../../institutions/services/upload-review-profile";
 import { uploadsRepository } from "../repository";
 import { AppError } from "../../../lib/errors";
 import type { EnvBindings } from "../../../lib/app-env";
-import { analyzePdfFirstPageVisuals } from "./visual-analysis";
 import { putPaperFile } from "../../../platform/storage";
-import { createTextPreview, extractPdfText, looksLikePdf } from "./pdf-text";
+import { looksLikePdf } from "./pdf-text";
 
 const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024;
 
@@ -55,20 +52,12 @@ const requireConfirmField = (value: string | null | undefined, label: string) =>
   return normalizedValue;
 };
 
-const createPrefillPayload = ({
-  file,
-  fileHash,
-  extractedText,
-  review,
-  duplicateCheck
-}: {
+const createPrefillPayload = ({ file, fileHash, duplicateCheck }: {
   file: File;
   fileHash: string;
-  extractedText: string;
-  review: UploadReviewResult;
   duplicateCheck: {
     isDuplicate: boolean;
-    reason: "none" | "file_hash" | "metadata";
+    reason: "none" | "file_hash";
     matchedPaperId: string | null;
     matchedSubmissionId: string | null;
   };
@@ -79,12 +68,6 @@ const createPrefillPayload = ({
     sizeBytes: file.size,
     hash: fileHash
   },
-  extracted: {
-    textPreview: createTextPreview(extractedText),
-    metadata: review.metadata,
-    confidence: review.confidence
-  },
-  review,
   duplicateCheck
 });
 
@@ -92,30 +75,16 @@ export const uploadsService = {
   buildPrefill: async (db: D1Database, institutionId: string, file: File, env: EnvBindings) => {
     const fileBytes = await file.arrayBuffer();
     const fileText = new TextDecoder().decode(fileBytes);
-    const uploadReviewProfile = getInstitutionUploadReviewProfile(institutionId);
 
     ensurePdfFile(file, fileText);
 
-    if (!uploadReviewProfile) {
-      throw new AppError("No upload review profile is configured for this institution.", 400);
-    }
-
     const fileHash = await createFileHash(fileBytes);
-    const visual = await analyzePdfFirstPageVisuals(fileBytes, {
-      rendererUrl: env.PDF_RENDERER_URL,
-      rendererToken: env.PDF_RENDERER_TOKEN
-    });
-    const extractedText = extractPdfText(fileText);
-    const review = uploadReviewProfile.reviewUpload(extractedText, visual);
-
     const matchedPaperByHash = await papersRepository.findByFileHash(db, institutionId, fileHash);
 
     if (matchedPaperByHash) {
       return createPrefillPayload({
         file,
         fileHash,
-        extractedText,
-        review,
         duplicateCheck: {
           isDuplicate: true,
           reason: "file_hash" as const,
@@ -131,8 +100,6 @@ export const uploadsService = {
       return createPrefillPayload({
         file,
         fileHash,
-        extractedText,
-        review,
         duplicateCheck: {
           isDuplicate: true,
           reason: "file_hash" as const,
@@ -142,59 +109,9 @@ export const uploadsService = {
       });
     }
 
-    if (review.metadata.unitCode && review.metadata.paperType && review.metadata.academicYear) {
-      const matchedPaperByMetadata = await papersRepository.findByMetadata(
-        db,
-        institutionId,
-        review.metadata.unitCode,
-        review.metadata.paperType,
-        review.metadata.academicYear
-      );
-
-      if (matchedPaperByMetadata) {
-        return createPrefillPayload({
-          file,
-          fileHash,
-          extractedText,
-          review,
-          duplicateCheck: {
-            isDuplicate: true,
-            reason: "metadata" as const,
-            matchedPaperId: matchedPaperByMetadata.id,
-            matchedSubmissionId: null
-          }
-        });
-      }
-
-      const matchedSubmissionByMetadata = await uploadsRepository.findByMetadata(
-        db,
-        institutionId,
-        review.metadata.unitCode,
-        review.metadata.paperType,
-        review.metadata.academicYear
-      );
-
-      if (matchedSubmissionByMetadata) {
-        return createPrefillPayload({
-          file,
-          fileHash,
-          extractedText,
-          review,
-          duplicateCheck: {
-            isDuplicate: true,
-            reason: "metadata" as const,
-            matchedPaperId: null,
-            matchedSubmissionId: matchedSubmissionByMetadata.id
-          }
-        });
-      }
-    }
-
     return createPrefillPayload({
       file,
       fileHash,
-      extractedText,
-      review,
       duplicateCheck: {
         isDuplicate: false,
         reason: "none" as const,
