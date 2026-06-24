@@ -27,21 +27,43 @@ const createEnv = (db: D1Database) => ({
   DB: db
 });
 
+const resendEnv = {
+  RESEND_API_KEY: "re_test_key",
+  AUTH_EMAIL_FROM: "PaperBank <verify@paperbank.online>"
+};
+
+const extractVerificationCode = (text: string) => {
+  const match = text.match(/Verification code:\s*(\d{6})/i);
+
+  if (!match) {
+    throw new Error("Verification code was not found in the email payload.");
+  }
+
+  return match[1];
+};
+
 const withVerificationCodeCapture = async <T>(run: () => Promise<T>) => {
-  const originalLog = console.log;
+  const originalFetch = globalThis.fetch;
   let verificationCode: string | null = null;
 
-  console.log = (message?: unknown, meta?: unknown) => {
-    if (
-      message === "Auth verification code generated" &&
-      meta &&
-      typeof meta === "object" &&
-      "verificationCode" in meta &&
-      typeof meta.verificationCode === "string"
-    ) {
-      verificationCode = meta.verificationCode;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url) === "https://api.resend.com/emails" && init?.body) {
+      const payload = JSON.parse(String(init.body)) as { text?: string };
+
+      if (payload.text) {
+        verificationCode = extractVerificationCode(payload.text);
+      }
+
+      return new Response(JSON.stringify({ id: "email_123" }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json"
+        }
+      });
     }
-  };
+
+    return originalFetch(url as RequestInfo | URL, init);
+  }) as typeof fetch;
 
   try {
     const result = await run();
@@ -55,7 +77,7 @@ const withVerificationCodeCapture = async <T>(run: () => Promise<T>) => {
       verificationCode
     };
   } finally {
-    console.log = originalLog;
+    globalThis.fetch = originalFetch;
   }
 };
 
@@ -163,8 +185,7 @@ describe("auth flow", () => {
       },
       {
         ...createEnv(testDb.db),
-        RESEND_API_KEY: "re_test_key",
-        AUTH_EMAIL_FROM: "PaperBank <verify@paperbank.online>"
+        ...resendEnv
       }
     );
     const body = (await response.json()) as ChallengeResponse;
@@ -205,6 +226,10 @@ describe("auth flow", () => {
     const fullName = "Auth Student";
 
     const challengeCapture = await withVerificationCodeCapture(async () => {
+      const envWithResend = {
+        ...env,
+        ...resendEnv
+      };
       const challengeResponse = await app.request(
         "/api/auth/challenge",
         {
@@ -218,7 +243,7 @@ describe("auth flow", () => {
             fullName
           })
         },
-        env
+        envWithResend
       );
 
       return {
@@ -318,6 +343,10 @@ describe("auth flow", () => {
     const env = createEnv(testDb.db);
 
     const challengeCapture = await withVerificationCodeCapture(async () => {
+      const envWithResend = {
+        ...env,
+        ...resendEnv
+      };
       const response = await app.request(
         "/api/auth/challenge",
         {
@@ -331,7 +360,7 @@ describe("auth flow", () => {
             fullName: "Something Else"
           })
         },
-        env
+        envWithResend
       );
 
       return {
@@ -394,6 +423,10 @@ describe("auth flow", () => {
     const fullName = "Expired Student";
 
     const challengeCapture = await withVerificationCodeCapture(async () => {
+      const envWithResend = {
+        ...env,
+        ...resendEnv
+      };
       const response = await app.request(
         "/api/auth/challenge",
         {
@@ -407,7 +440,7 @@ describe("auth flow", () => {
             fullName
           })
         },
-        env
+        envWithResend
       );
 
       return {

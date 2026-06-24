@@ -432,7 +432,7 @@ describe("upload prefill route", () => {
 
     expect(response.status).toBe(500);
     expect(body.success).toBe(false);
-    expect(body.message).toBe("Upload review prompt is not configured for this institution.");
+    expect(body.message).toBe("Something went wrong on our side. Please try again.");
   }, 15000);
 
   it("rejects uploads when the model rejects the document", async () => {
@@ -676,6 +676,6 @@ describe("upload prefill route", () => {
 
     expect(response.status).toBe(502);
     expect(body.success).toBe(false);
-    expect(body.message).toBe("Upload review model returned invalid JSON.");
+    expect(body.message).toBe("Something went wrong on our side. Please try again.");
   }, 15000);
 });

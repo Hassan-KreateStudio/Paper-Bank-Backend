@@ -1,6 +1,7 @@
 import { NotFoundError, AppError } from "../../../lib/errors";
 import type { EnvBindings } from "../../../lib/app-env";
 import { reviewUploadDocument, type UploadReviewResult } from "../../../platform/ai/review";
+import { logger } from "../../../platform/observability";
 import { institutionsRepository } from "../../institutions/repository";
 import { papersRepository } from "../../papers/repository";
 import {
@@ -166,7 +167,13 @@ const ensureSupportedAssessmentType = (
 };
 
 export const uploadsService = {
-  buildPrefill: async (db: D1Database, institutionId: string, file: File, env: EnvBindings) => {
+  buildPrefill: async (
+    db: D1Database,
+    institutionId: string,
+    file: File,
+    env: EnvBindings,
+    requestId: string
+  ) => {
     const fileBytes = await file.arrayBuffer();
     const fileText = new TextDecoder().decode(fileBytes);
 
@@ -196,6 +203,24 @@ export const uploadsService = {
       institutionPrompt
     });
 
+    logger.info("upload prefill model review", {
+      requestId,
+      institutionId,
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      decision: review.decision.status,
+      decisionMessage: review.decision.message,
+      confidence: review.document.confidence,
+      detectedInstitution: review.institution.detected,
+      paperType: review.document.paperType,
+      unitCode: review.metadata.unitCode,
+      unitName: review.metadata.unitName,
+      assessmentDate: review.metadata.date,
+      title: review.metadata.title,
+      supportingSignals: review.evidence.supportingSignals,
+      contradictingSignals: review.evidence.contradictingSignals
+    });
+
     if (review.decision.status === "reject") {
       throw new AppError(review.decision.message, 422);
     }
@@ -217,6 +242,18 @@ export const uploadsService = {
           review,
           "We found a likely valid assessment paper, but some details could not be extracted confidently yet. Please review the extracted metadata before continuing."
         );
+
+    logger.info("upload prefill normalized document identity", {
+      requestId,
+      institutionId,
+      fileName: file.name,
+      assessmentType: documentIdentity.assessmentType,
+      unitCode: documentIdentity.unitCode,
+      assessmentDate: documentIdentity.assessmentDate,
+      assessmentNumber: documentIdentity.assessmentNumber,
+      documentFingerprint: documentIdentity.documentFingerprint,
+      fingerprintReady
+    });
 
     if (documentIdentity.documentFingerprint) {
       const matchedPaperByFingerprint = await papersRepository.findByDocumentFingerprint(

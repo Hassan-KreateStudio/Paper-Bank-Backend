@@ -20,7 +20,13 @@ uploadRoutes.post("/prefill", async (c) => {
     throw new AppError("A pdf file is required.", 400);
   }
 
-  const prefill = await uploadsService.buildPrefill(db, institutionId, upload, c.env);
+  const prefill = await uploadsService.buildPrefill(
+    db,
+    institutionId,
+    upload,
+    c.env,
+    c.get("requestId")
+  );
 
   return c.json({
     success: true,

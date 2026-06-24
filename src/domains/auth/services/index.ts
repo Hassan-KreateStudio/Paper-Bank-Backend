@@ -218,7 +218,6 @@ export const authService = {
       institutionId: institution.id,
       studentId: challenge.studentId,
       email: challenge.email,
-      verificationCode,
       delivery: emailWasSent ? "resend" : "log_fallback"
     });
 
