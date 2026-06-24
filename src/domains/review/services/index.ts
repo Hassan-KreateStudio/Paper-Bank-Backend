@@ -62,6 +62,7 @@ export const reviewService = {
       status: PAPER_STATUS.available,
       fileKey: submission.fileKey,
       fileHash: submission.fileHash,
+      documentFingerprint: submission.documentFingerprint,
       extractedText
     });
 

@@ -40,6 +40,11 @@ export const uploadsRepository = {
             mime_type AS mimeType,
             file_size_bytes AS fileSizeBytes,
             file_hash AS fileHash,
+            model_label AS modelLabel,
+            model_confidence AS modelConfidence,
+            model_metadata_json AS modelMetadataJson,
+            reviewed_by_model_at AS reviewedByModelAt,
+            document_fingerprint AS documentFingerprint,
             status,
             created_at AS createdAt,
             updated_at AS updatedAt
@@ -110,11 +115,16 @@ export const uploadsRepository = {
             mime_type,
             file_size_bytes,
             file_hash,
+            model_label,
+            model_confidence,
+            model_metadata_json,
+            reviewed_by_model_at,
+            document_fingerprint,
             status,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
         `
       )
       .bind(
@@ -132,6 +142,11 @@ export const uploadsRepository = {
         input.mimeType,
         input.fileSizeBytes,
         input.fileHash,
+        input.modelLabel,
+        input.modelConfidence,
+        input.modelMetadataJson,
+        input.reviewedByModelAt,
+        input.documentFingerprint,
         input.status,
         now,
         now

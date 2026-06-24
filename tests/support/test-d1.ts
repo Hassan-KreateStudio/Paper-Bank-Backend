@@ -13,7 +13,8 @@ const migrationFiles = [
   "migrations/d1/0009_add_paper_search_index.sql",
   "migrations/d1/0010_create_waitlist_entries.sql",
   "migrations/d1/0011_add_upload_review_prompt_to_institutions.sql",
-  "migrations/d1/0012_seed_strathmore_upload_review_prompt.sql"
+  "migrations/d1/0012_seed_strathmore_upload_review_prompt.sql",
+  "migrations/d1/0013_add_upload_review_fields.sql"
 ];
 
 class TestD1Statement {
@@ -207,6 +208,7 @@ export const createTestD1 = () => {
     status: string;
     fileKey: string;
     fileHash: string;
+    documentFingerprint: string | null;
     extractedText: string | null;
   }>) => {
     const now = new Date().toISOString();
@@ -222,6 +224,7 @@ export const createTestD1 = () => {
       status: overrides?.status ?? "available",
       fileKey: overrides?.fileKey ?? "papers/database-systems.pdf",
       fileHash: overrides?.fileHash ?? "existing-file-hash",
+      documentFingerprint: overrides?.documentFingerprint ?? null,
       extractedText: overrides?.extractedText ?? null
     };
 
@@ -240,11 +243,12 @@ export const createTestD1 = () => {
             status,
             file_key,
             file_hash,
+            document_fingerprint,
             extracted_text,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
         `
       )
       .run(
@@ -259,6 +263,7 @@ export const createTestD1 = () => {
         paper.status,
         paper.fileKey,
         paper.fileHash,
+        paper.documentFingerprint,
         paper.extractedText,
         now,
         now
@@ -282,6 +287,11 @@ export const createTestD1 = () => {
     mimeType: string;
     fileSizeBytes: number;
     fileHash: string;
+    modelLabel: string | null;
+    modelConfidence: number | null;
+    modelMetadataJson: string | null;
+    reviewedByModelAt: string | null;
+    documentFingerprint: string | null;
     status: string;
   }>) => {
     const now = new Date().toISOString();
@@ -300,6 +310,11 @@ export const createTestD1 = () => {
       mimeType: overrides?.mimeType ?? "application/pdf",
       fileSizeBytes: overrides?.fileSizeBytes ?? 1024,
       fileHash: overrides?.fileHash ?? "existing-submission-hash",
+      modelLabel: overrides?.modelLabel ?? null,
+      modelConfidence: overrides?.modelConfidence ?? null,
+      modelMetadataJson: overrides?.modelMetadataJson ?? null,
+      reviewedByModelAt: overrides?.reviewedByModelAt ?? null,
+      documentFingerprint: overrides?.documentFingerprint ?? null,
       status: overrides?.status ?? "submitted"
     };
 
@@ -321,11 +336,16 @@ export const createTestD1 = () => {
             mime_type,
             file_size_bytes,
             file_hash,
+            model_label,
+            model_confidence,
+            model_metadata_json,
+            reviewed_by_model_at,
+            document_fingerprint,
             status,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
         `
       )
       .run(
@@ -343,6 +363,11 @@ export const createTestD1 = () => {
         submission.mimeType,
         submission.fileSizeBytes,
         submission.fileHash,
+        submission.modelLabel,
+        submission.modelConfidence,
+        submission.modelMetadataJson,
+        submission.reviewedByModelAt,
+        submission.documentFingerprint,
         submission.status,
         now,
         now

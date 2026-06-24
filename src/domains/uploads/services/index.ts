@@ -3,6 +3,10 @@ import type { EnvBindings } from "../../../lib/app-env";
 import { extractUploadDocumentContent, reviewUploadDocument, type UploadReviewResult } from "../../../platform/ai/review";
 import { institutionsRepository } from "../../institutions/repository";
 import { papersRepository } from "../../papers/repository";
+import {
+  normalizeDocumentFingerprint,
+  type NormalizedAssessmentType
+} from "./document-fingerprint";
 import { uploadsRepository } from "../repository";
 import { putPaperFile } from "../../../platform/storage";
 import { looksLikePdf } from "./pdf-text";
@@ -54,7 +58,28 @@ const requireConfirmField = (value: string | null | undefined, label: string) =>
   return normalizedValue;
 };
 
-const createPrefillPayload = ({ file, fileHash, duplicateCheck, review }: {
+const optionalConfirmField = (value: string | null | undefined) => {
+  const normalizedValue = value?.trim();
+  return normalizedValue ? normalizedValue : null;
+};
+
+const optionalConfirmNumber = (value: string | null | undefined, label: string) => {
+  const normalizedValue = optionalConfirmField(value);
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const parsedValue = Number(normalizedValue);
+
+  if (!Number.isFinite(parsedValue)) {
+    throw new AppError(`${label} must be a valid number.`, 400);
+  }
+
+  return parsedValue;
+};
+
+const createPrefillPayload = ({ file, fileHash, duplicateCheck, review, documentIdentity }: {
   file: File;
   fileHash: string;
   duplicateCheck: {
@@ -64,6 +89,14 @@ const createPrefillPayload = ({ file, fileHash, duplicateCheck, review }: {
     matchedSubmissionId: string | null;
   };
   review: UploadReviewResult | null;
+  documentIdentity: {
+    unitCode: string | null;
+    assessmentType: NormalizedAssessmentType;
+    assessmentDate: string | null;
+    assessmentNumber: string | null;
+    documentFingerprint: string | null;
+    isFingerprintReady: boolean;
+  } | null;
 }) => ({
   file: {
     name: file.name,
@@ -72,8 +105,34 @@ const createPrefillPayload = ({ file, fileHash, duplicateCheck, review }: {
     hash: fileHash
   },
   duplicateCheck,
-  review
+  review,
+  documentIdentity
 });
+
+const createManualReviewDecision = (
+  review: UploadReviewResult,
+  message: string
+): UploadReviewResult => ({
+  ...review,
+  decision: {
+    status: "review",
+    message
+  }
+});
+
+const ensureSupportedAssessmentType = (
+  assessmentType: NormalizedAssessmentType,
+  institutionName: string
+) => {
+  if (assessmentType === "cat" || assessmentType === "exam") {
+    return;
+  }
+
+  throw new AppError(
+    `This document does not appear to be a valid ${institutionName} CAT or exam paper. Please upload a correct assessment document.`,
+    422
+  );
+};
 
 export const uploadsService = {
   buildPrefill: async (db: D1Database, institutionId: string, file: File, env: EnvBindings) => {
@@ -86,33 +145,7 @@ export const uploadsService = {
     const matchedPaperByHash = await papersRepository.findByFileHash(db, institutionId, fileHash);
 
     if (matchedPaperByHash) {
-      return createPrefillPayload({
-        file,
-        fileHash,
-        duplicateCheck: {
-          isDuplicate: true,
-          reason: "file_hash" as const,
-          matchedPaperId: matchedPaperByHash.id,
-          matchedSubmissionId: null
-        },
-        review: null
-      });
-    }
-
-    const matchedSubmissionByHash = await uploadsRepository.findByFileHash(db, institutionId, fileHash);
-
-    if (matchedSubmissionByHash) {
-      return createPrefillPayload({
-        file,
-        fileHash,
-        duplicateCheck: {
-          isDuplicate: true,
-          reason: "file_hash" as const,
-          matchedPaperId: null,
-          matchedSubmissionId: matchedSubmissionByHash.id
-        },
-        review: null
-      });
+      throw new AppError("This PDF already exists in PaperBank as an approved paper.", 409);
     }
 
     const institution = await institutionsRepository.findById(db, institutionId);
@@ -137,6 +170,39 @@ export const uploadsService = {
       throw new AppError(review.decision.message, 422);
     }
 
+    const documentIdentity = normalizeDocumentFingerprint({
+      institutionId,
+      unitCode: review.metadata.unitCode,
+      paperType: review.document.paperType,
+      date: review.metadata.date,
+      title: review.metadata.title
+    });
+
+    ensureSupportedAssessmentType(documentIdentity.assessmentType, institution.name);
+
+    const fingerprintReady = Boolean(documentIdentity.documentFingerprint);
+    const effectiveReview = fingerprintReady
+      ? review
+      : createManualReviewDecision(
+          review,
+          "We found a likely valid assessment paper, but some details could not be extracted confidently yet. Please review the extracted metadata before continuing."
+        );
+
+    if (documentIdentity.documentFingerprint) {
+      const matchedPaperByFingerprint = await papersRepository.findByDocumentFingerprint(
+        db,
+        institutionId,
+        documentIdentity.documentFingerprint
+      );
+
+      if (matchedPaperByFingerprint) {
+        throw new AppError(
+          "This assessment paper already exists in PaperBank as an approved paper.",
+          409
+        );
+      }
+    }
+
     return createPrefillPayload({
       file,
       fileHash,
@@ -146,7 +212,11 @@ export const uploadsService = {
         matchedPaperId: null,
         matchedSubmissionId: null
       },
-      review
+      review: effectiveReview,
+      documentIdentity: {
+        ...documentIdentity,
+        isFingerprintReady: fingerprintReady
+      }
     });
   },
   confirmUpload: async (
@@ -161,6 +231,11 @@ export const uploadsService = {
       academicYear: string | null | undefined;
       title?: string | null | undefined;
       description?: string | null | undefined;
+      modelLabel?: string | null | undefined;
+      modelConfidence?: string | null | undefined;
+      modelMetadataJson?: string | null | undefined;
+      reviewedByModelAt?: string | null | undefined;
+      documentFingerprint?: string | null | undefined;
     },
     env: EnvBindings
   ) => {
@@ -175,6 +250,11 @@ export const uploadsService = {
     const academicYear = requireConfirmField(input.academicYear, "Academic year");
     const title = input.title?.trim() || buildUploadTitle(unitName, paperType, academicYear);
     const description = input.description?.trim() || null;
+    const modelLabel = optionalConfirmField(input.modelLabel);
+    const modelConfidence = optionalConfirmNumber(input.modelConfidence, "Model confidence");
+    const modelMetadataJson = optionalConfirmField(input.modelMetadataJson);
+    const reviewedByModelAt = optionalConfirmField(input.reviewedByModelAt);
+    const documentFingerprint = optionalConfirmField(input.documentFingerprint);
     const fileHash = await createFileHash(fileBytes);
 
     const matchedPaperByHash = await papersRepository.findByFileHash(db, institutionId, fileHash);
@@ -224,6 +304,11 @@ export const uploadsService = {
       mimeType: file.type || "application/pdf",
       fileSizeBytes: file.size,
       fileHash,
+      modelLabel,
+      modelConfidence,
+      modelMetadataJson,
+      reviewedByModelAt,
+      documentFingerprint,
       status: "submitted"
     });
 

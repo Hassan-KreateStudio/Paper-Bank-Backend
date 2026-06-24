@@ -76,6 +76,18 @@ describe("upload confirm and paper retrieval flow", () => {
     formData.set("paperType", "exam");
     formData.set("academicYear", "2023/2024");
     formData.set("title", "Database Systems Exam 2023/2024");
+    formData.set("modelLabel", "accept");
+    formData.set("modelConfidence", "0.93");
+    formData.set(
+      "modelMetadataJson",
+      JSON.stringify({
+        institution: {
+          detected: "Strathmore University"
+        }
+      })
+    );
+    formData.set("reviewedByModelAt", "2026-06-24T11:00:00.000Z");
+    formData.set("documentFingerprint", "inst_strathmore|bit2205|exam|2026-05-11|unknown");
 
     const confirmResponse = await app.request(
       "/api/uploads/confirm",
@@ -101,6 +113,11 @@ describe("upload confirm and paper retrieval flow", () => {
         academicYear: string;
         fileKey: string;
         fileHash: string;
+        modelLabel: string | null;
+        modelConfidence: number | null;
+        modelMetadataJson: string | null;
+        reviewedByModelAt: string | null;
+        documentFingerprint: string | null;
         status: string;
       };
     };
@@ -110,6 +127,13 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(confirmBody.submission.status).toBe("submitted");
     expect(confirmBody.submission.studentId).toBe(student.id);
     expect(confirmBody.submission.fileKey).toContain("upload-submissions");
+    expect(confirmBody.submission.modelLabel).toBe("accept");
+    expect(confirmBody.submission.modelConfidence).toBe(0.93);
+    expect(confirmBody.submission.modelMetadataJson).toContain("Strathmore University");
+    expect(confirmBody.submission.reviewedByModelAt).toBe("2026-06-24T11:00:00.000Z");
+    expect(confirmBody.submission.documentFingerprint).toBe(
+      "inst_strathmore|bit2205|exam|2026-05-11|unknown"
+    );
 
     const storedUpload = await (bucket as unknown as ReturnType<typeof createMockR2Bucket>).get(
       confirmBody.submission.fileKey
@@ -158,6 +182,7 @@ describe("upload confirm and paper retrieval flow", () => {
         id: string;
         sourceUploadSubmissionId: string | null;
         fileKey: string;
+        documentFingerprint: string | null;
       };
     };
 
@@ -166,6 +191,9 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(approveBody.submission.status).toBe("approved");
     expect(approveBody.paper.sourceUploadSubmissionId).toBe(confirmBody.submission.id);
     expect(approveBody.paper.fileKey).toBe(confirmBody.submission.fileKey);
+    expect(approveBody.paper.documentFingerprint).toBe(
+      "inst_strathmore|bit2205|exam|2026-05-11|unknown"
+    );
 
     const papersResponse = await app.request(
       "/api/papers?query=bit%202205",
@@ -195,8 +223,18 @@ describe("upload confirm and paper retrieval flow", () => {
       },
       env
     );
+    const paperBody = (await paperResponse.json()) as {
+      success: boolean;
+      paper: {
+        id: string;
+        documentFingerprint: string | null;
+      };
+    };
 
     expect(paperResponse.status).toBe(200);
+    expect(paperBody.paper.documentFingerprint).toBe(
+      "inst_strathmore|bit2205|exam|2026-05-11|unknown"
+    );
 
     const fileResponse = await app.request(
       `/api/papers/${approveBody.paper.id}/file`,

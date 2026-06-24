@@ -20,6 +20,14 @@ type UploadPrefillResponse = {
     matchedSubmissionId: string | null;
   };
   review: UploadReviewResult | null;
+  documentIdentity: {
+    unitCode: string | null;
+    assessmentType: "cat" | "exam" | "assignment" | "unknown";
+    assessmentDate: string | null;
+    assessmentNumber: string | null;
+    documentFingerprint: string | null;
+    isFingerprintReady: boolean;
+  } | null;
 };
 
 const authSecret = "super-secret-auth-token";
@@ -220,6 +228,14 @@ describe("upload prefill route", () => {
     expect(body.duplicateCheck.reason).toBe("none");
     expect(body.review?.decision.status).toBe("accept");
     expect(body.review?.metadata.unitCode).toBe("BIT 2205");
+    expect(body.documentIdentity).toEqual({
+      unitCode: "bit2205",
+      assessmentType: "cat",
+      assessmentDate: "2026-05-11",
+      assessmentNumber: null,
+      documentFingerprint: "inst_strathmore|bit2205|cat|2026-05-11|unknown",
+      isFingerprintReady: true
+    });
   }, 15000);
 
   it("rejects requests without a pdf file", async () => {
@@ -254,7 +270,7 @@ describe("upload prefill route", () => {
     expect(body.message).toContain("pdf file is required");
   });
 
-  it("flags an exact duplicate by file hash", async () => {
+  it("rejects an exact duplicate against approved papers by file hash", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt
@@ -289,16 +305,60 @@ describe("upload prefill route", () => {
       },
       createEnv(testDb.db)
     );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(response.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.message).toBe("This PDF already exists in PaperBank as an approved paper.");
+  }, 15000);
+
+  it("does not reject because the same file is already in upload submissions", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+      uploadReviewPrompt: institutionPrompt
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const duplicateFile = await createExamPdfFile();
+    const duplicateBytes = await duplicateFile.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", duplicateBytes);
+    const duplicateHash = Array.from(new Uint8Array(hashBuffer))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+
+    testDb.seedUploadSubmission({
+      fileHash: duplicateHash
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    formData.set("file", duplicateFile);
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: createAiBinding()
+      })
+    );
     const body = (await response.json()) as UploadPrefillResponse;
 
     testDb.close();
 
     expect(response.status).toBe(200);
-    expect(body.duplicateCheck.isDuplicate).toBe(true);
-    expect(body.duplicateCheck.reason).toBe("file_hash");
-    expect(body.duplicateCheck.matchedPaperId).toBe(seededPaper.id);
-    expect(body.duplicateCheck.matchedSubmissionId).toBeNull();
-    expect(body.review).toBeNull();
+    expect(body.success).toBe(true);
+    expect(body.duplicateCheck.isDuplicate).toBe(false);
+    expect(body.review?.decision.status).toBe("accept");
   }, 15000);
 
   it("requires an institution upload review prompt", async () => {
@@ -391,6 +451,154 @@ describe("upload prefill route", () => {
     expect(body.success).toBe(false);
     expect(body.message).toBe(
       "This PDF does not appear to be a valid Strathmore assessment document. Please upload a correct Strathmore CAT or exam paper."
+    );
+  }, 15000);
+
+  it("rejects uploads that are not cat or exam papers", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+      uploadReviewPrompt: institutionPrompt
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    formData.set("file", await createExamPdfFile("assignment.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: createAiBinding({
+          response: JSON.stringify(
+            createReviewResponse({
+              document: {
+                paper_type: "assignment"
+              },
+              decision: {
+                status: "accept",
+                message: "This appears to be a valid Strathmore assessment document."
+              }
+            })
+          )
+        })
+      })
+    );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(response.status).toBe(422);
+    expect(body.success).toBe(false);
+    expect(body.message).toBe(
+      "This document does not appear to be a valid Strathmore University CAT or exam paper. Please upload a correct assessment document."
+    );
+  }, 15000);
+
+  it("returns review when required fingerprint fields are missing", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+      uploadReviewPrompt: institutionPrompt
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    formData.set("file", await createExamPdfFile("missing-date.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: createAiBinding({
+          response: JSON.stringify(
+            createReviewResponse({
+              metadata: {
+                date: null
+              },
+              decision: {
+                status: "accept",
+                message: "This appears to be a valid Strathmore assessment document."
+              }
+            })
+          )
+        })
+      })
+    );
+    const body = (await response.json()) as UploadPrefillResponse;
+
+    testDb.close();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.review?.decision.status).toBe("review");
+    expect(body.documentIdentity).toEqual({
+      unitCode: "bit2205",
+      assessmentType: "cat",
+      assessmentDate: null,
+      assessmentNumber: null,
+      documentFingerprint: null,
+      isFingerprintReady: false
+    });
+  }, 15000);
+
+  it("rejects duplicate content against approved papers by fingerprint", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+      uploadReviewPrompt: institutionPrompt
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    testDb.seedPaper({
+      fileHash: "different-approved-file-hash",
+      documentFingerprint: "inst_strathmore|bit2205|cat|2026-05-11|unknown"
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    formData.set("file", await createExamPdfFile("same-paper-new-scan.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: createAiBinding()
+      })
+    );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(response.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.message).toBe(
+      "This assessment paper already exists in PaperBank as an approved paper."
     );
   }, 15000);
 

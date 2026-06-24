@@ -54,7 +54,12 @@ uploadRoutes.post("/confirm", async (c) => {
       unitName: formData.get("unitName")?.toString(),
       paperType: formData.get("paperType")?.toString(),
       academicYear: formData.get("academicYear")?.toString(),
-      description: formData.get("description")?.toString()
+      description: formData.get("description")?.toString(),
+      modelLabel: formData.get("modelLabel")?.toString(),
+      modelConfidence: formData.get("modelConfidence")?.toString(),
+      modelMetadataJson: formData.get("modelMetadataJson")?.toString(),
+      reviewedByModelAt: formData.get("reviewedByModelAt")?.toString(),
+      documentFingerprint: formData.get("documentFingerprint")?.toString()
     },
     c.env
   );

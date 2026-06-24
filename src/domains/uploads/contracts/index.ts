@@ -13,6 +13,11 @@ export type UploadRecord = {
   mimeType: string;
   fileSizeBytes: number;
   fileHash: string;
+  modelLabel: string | null;
+  modelConfidence: number | null;
+  modelMetadataJson: string | null;
+  reviewedByModelAt: string | null;
+  documentFingerprint: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;

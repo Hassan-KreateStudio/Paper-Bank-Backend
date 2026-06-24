@@ -37,6 +37,7 @@ export const papersRepository = {
             status,
             file_key AS fileKey,
             file_hash AS fileHash,
+            document_fingerprint AS documentFingerprint,
             extracted_text AS extractedText,
             created_at AS createdAt,
             updated_at AS updatedAt
@@ -64,6 +65,7 @@ export const papersRepository = {
             status,
             file_key AS fileKey,
             file_hash AS fileHash,
+            document_fingerprint AS documentFingerprint,
             extracted_text AS extractedText,
             created_at AS createdAt,
             updated_at AS updatedAt
@@ -86,6 +88,23 @@ export const papersRepository = {
         `
       )
       .bind(institutionId, fileHash)
+      .first<PaperDuplicateCandidate>();
+  },
+  findByDocumentFingerprint: async (
+    db: D1Database,
+    institutionId: string,
+    documentFingerprint: string
+  ) => {
+    return db
+      .prepare(
+        `
+          ${paperSelect}
+          WHERE institution_id = ?1
+            AND document_fingerprint = ?2
+          LIMIT 1
+        `
+      )
+      .bind(institutionId, documentFingerprint)
       .first<PaperDuplicateCandidate>();
   },
   findByMetadata: async (
@@ -131,11 +150,12 @@ export const papersRepository = {
             status,
             file_key,
             file_hash,
+            document_fingerprint,
             extracted_text,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
         `
       )
       .bind(
@@ -150,6 +170,7 @@ export const papersRepository = {
         input.status,
         input.fileKey,
         input.fileHash,
+        input.documentFingerprint,
         input.extractedText,
         now,
         now
@@ -177,6 +198,7 @@ export const papersRepository = {
               status,
               file_key AS fileKey,
               file_hash AS fileHash,
+              document_fingerprint AS documentFingerprint,
               extracted_text AS extractedText,
               created_at AS createdAt,
               updated_at AS updatedAt
@@ -207,6 +229,7 @@ export const papersRepository = {
               status,
               file_key AS fileKey,
               file_hash AS fileHash,
+              document_fingerprint AS documentFingerprint,
               extracted_text AS extractedText,
               created_at AS createdAt,
               updated_at AS updatedAt
