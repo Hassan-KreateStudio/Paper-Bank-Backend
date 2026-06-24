@@ -3,31 +3,38 @@ import app from "../../src";
 import { createAuthToken } from "../../src/domains/auth/token";
 import { createPdfFixture } from "../support/pdf-fixture";
 import { createTestD1 } from "../support/test-d1";
-import type { UploadReviewResult } from "../../src/platform/ai/review";
 
 type UploadPrefillResponse = {
-  success: boolean;
+  success: true;
   file: {
     name: string;
     mimeType: string;
     sizeBytes: number;
     hash: string;
   };
+  modelReview: {
+    label: "accept" | "review" | "reject";
+    confidence: number;
+    evidence: string[];
+    warnings: string[];
+  };
+  extracted: {
+    institutionName: string | null;
+    unitCode: string | null;
+    unitName: string | null;
+    paperType: "cat" | "exam" | "assignment" | "other" | null;
+    assessmentDate: string | null;
+    academicYear: string | null;
+    assessmentNumber: string | null;
+    title: string | null;
+  };
+  documentFingerprint: string | null;
   duplicateCheck: {
-    isDuplicate: boolean;
-    reason: "none" | "file_hash";
+    isDuplicate: false;
+    reason: "none" | "file_hash" | "document_fingerprint";
     matchedPaperId: string | null;
     matchedSubmissionId: string | null;
   };
-  review: UploadReviewResult | null;
-  documentIdentity: {
-    unitCode: string | null;
-    assessmentType: "cat" | "exam" | "assignment" | "unknown";
-    assessmentDate: string | null;
-    assessmentNumber: string | null;
-    documentFingerprint: string | null;
-    isFingerprintReady: boolean;
-  } | null;
 };
 
 const authSecret = "super-secret-auth-token";
@@ -226,16 +233,23 @@ describe("upload prefill route", () => {
     expect(body.file.hash).toBeString();
     expect(body.duplicateCheck.isDuplicate).toBe(false);
     expect(body.duplicateCheck.reason).toBe("none");
-    expect(body.review?.decision.status).toBe("accept");
-    expect(body.review?.metadata.unitCode).toBe("BIT 2205");
-    expect(body.documentIdentity).toEqual({
-      unitCode: "bit2205",
-      assessmentType: "cat",
-      assessmentDate: "2026-05-11",
-      assessmentNumber: null,
-      documentFingerprint: "inst_strathmore|bit2205|cat|2026-05-11|unknown",
-      isFingerprintReady: true
+    expect(body.modelReview).toEqual({
+      label: "accept",
+      confidence: 0.97,
+      evidence: ["Strathmore header", "unit code", "CAT wording"],
+      warnings: []
     });
+    expect(body.extracted).toEqual({
+      institutionName: "Strathmore University",
+      unitCode: "BIT 2205",
+      unitName: "Database Systems",
+      paperType: "cat",
+      assessmentDate: "2026-05-11",
+      academicYear: "2023/2024",
+      assessmentNumber: null,
+      title: "Database Systems CAT"
+    });
+    expect(body.documentFingerprint).toBe("inst_strathmore|bit2205|cat|2026-05-11|unknown");
   }, 15000);
 
   it("rejects requests without a pdf file", async () => {
@@ -358,7 +372,7 @@ describe("upload prefill route", () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.duplicateCheck.isDuplicate).toBe(false);
-    expect(body.review?.decision.status).toBe("accept");
+    expect(body.modelReview.label).toBe("accept");
   }, 15000);
 
   it("requires an institution upload review prompt", async () => {
@@ -549,15 +563,18 @@ describe("upload prefill route", () => {
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.review?.decision.status).toBe("review");
-    expect(body.documentIdentity).toEqual({
-      unitCode: "bit2205",
-      assessmentType: "cat",
+    expect(body.modelReview.label).toBe("review");
+    expect(body.extracted).toEqual({
+      institutionName: "Strathmore University",
+      unitCode: "BIT 2205",
+      unitName: "Database Systems",
+      paperType: "cat",
       assessmentDate: null,
+      academicYear: "2023/2024",
       assessmentNumber: null,
-      documentFingerprint: null,
-      isFingerprintReady: false
+      title: "Database Systems CAT"
     });
+    expect(body.documentFingerprint).toBeNull();
   }, 15000);
 
   it("rejects duplicate content against approved papers by fingerprint", async () => {

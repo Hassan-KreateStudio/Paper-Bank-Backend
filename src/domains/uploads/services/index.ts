@@ -79,16 +79,24 @@ const optionalConfirmNumber = (value: string | null | undefined, label: string) 
   return parsedValue;
 };
 
+const mapExtractedPaperType = (paperType: UploadReviewResult["document"]["paperType"]) => {
+  if (paperType === "unknown") {
+    return "other" as const;
+  }
+
+  return paperType;
+};
+
 const createPrefillPayload = ({ file, fileHash, duplicateCheck, review, documentIdentity }: {
   file: File;
   fileHash: string;
   duplicateCheck: {
     isDuplicate: boolean;
-    reason: "none" | "file_hash";
+    reason: "none" | "file_hash" | "document_fingerprint";
     matchedPaperId: string | null;
     matchedSubmissionId: string | null;
   };
-  review: UploadReviewResult | null;
+  review: UploadReviewResult;
   documentIdentity: {
     unitCode: string | null;
     assessmentType: NormalizedAssessmentType;
@@ -96,7 +104,7 @@ const createPrefillPayload = ({ file, fileHash, duplicateCheck, review, document
     assessmentNumber: string | null;
     documentFingerprint: string | null;
     isFingerprintReady: boolean;
-  } | null;
+  };
 }) => ({
   file: {
     name: file.name,
@@ -104,9 +112,24 @@ const createPrefillPayload = ({ file, fileHash, duplicateCheck, review, document
     sizeBytes: file.size,
     hash: fileHash
   },
-  duplicateCheck,
-  review,
-  documentIdentity
+  modelReview: {
+    label: review.decision.status,
+    confidence: review.document.confidence,
+    evidence: review.evidence.supportingSignals,
+    warnings: review.evidence.contradictingSignals
+  },
+  extracted: {
+    institutionName: review.institution.detected,
+    unitCode: review.metadata.unitCode,
+    unitName: review.metadata.unitName,
+    paperType: mapExtractedPaperType(review.document.paperType),
+    assessmentDate: review.metadata.date,
+    academicYear: review.metadata.academicYear,
+    assessmentNumber: documentIdentity.assessmentNumber,
+    title: review.metadata.title
+  },
+  documentFingerprint: documentIdentity.documentFingerprint,
+  duplicateCheck
 });
 
 const createManualReviewDecision = (
