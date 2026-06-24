@@ -74,30 +74,23 @@ export const uploadsService = {
     const emptyReview = uploadReviewProfile.reviewUpload("", visual);
 
     if (visual.paperTone === "white") {
-      return {
-        file: {
-          name: file.name,
-          mimeType: file.type || "application/pdf",
-          sizeBytes: file.size,
-          hash: fileHash
-        },
-        extracted: {
-          textPreview: "",
-          metadata: emptyReview.metadata,
-          confidence: emptyReview.confidence
-        },
-        review: emptyReview,
-        duplicateCheck: {
-          isDuplicate: false,
-          reason: "none" as const,
-          matchedPaperId: null,
-          matchedSubmissionId: null
-        }
-      };
+      throw new AppError(
+        emptyReview.documentFailureMessage ??
+          "This PDF does not appear to be a valid institution assessment document.",
+        422
+      );
     }
 
     const extractedText = extractPdfText(fileText);
     const review = uploadReviewProfile.reviewUpload(extractedText, visual);
+
+    if (review.documentKind !== "strathmore_cat_or_exam") {
+      throw new AppError(
+        review.documentFailureMessage ??
+          "This PDF does not appear to be a valid institution assessment document.",
+        422
+      );
+    }
 
     const matchedPaperByHash = await papersRepository.findByFileHash(db, institutionId, fileHash);
 

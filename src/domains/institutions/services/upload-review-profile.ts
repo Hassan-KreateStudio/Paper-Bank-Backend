@@ -28,6 +28,7 @@ export type UploadReviewCheck = {
 
 export type UploadReviewResult = {
   documentKind: "strathmore_cat_or_exam" | "not_strathmore_cat_or_exam";
+  documentFailureMessage: string | null;
   visual: UploadVisualAnalysis;
   metadata: ExtractedMetadata;
   confidence: ExtractedConfidence;
@@ -209,6 +210,9 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
       documentKind: isStrathmoreAssessment
         ? "strathmore_cat_or_exam"
         : "not_strathmore_cat_or_exam",
+      documentFailureMessage: isStrathmoreAssessment
+        ? null
+        : "This PDF does not appear to be a valid Strathmore assessment document. Please upload a correct Strathmore CAT or exam paper.",
       visual,
       metadata: {
         institutionName,
