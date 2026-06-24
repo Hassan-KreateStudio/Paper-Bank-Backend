@@ -32,6 +32,8 @@ type UploadPrefillResponse = {
   review: {
     documentKind: "strathmore_cat_or_exam" | "not_strathmore_cat_or_exam";
     documentFailureMessage: string | null;
+    decision: "accept" | "review" | "reject";
+    decisionMessage: string | null;
     visual: {
       pageRenderStatus: "rendered" | "failed";
       paperTone: "white" | "non_white" | "unknown";
@@ -180,6 +182,8 @@ describe("upload prefill route", () => {
     expect(body.extracted.metadata.academicYear).toBe("2023/2024");
     expect(body.review.documentKind).toBe("strathmore_cat_or_exam");
     expect(body.review.documentFailureMessage).toBeNull();
+    expect(body.review.decision).toBe("accept");
+    expect(body.review.decisionMessage).toBeNull();
     expect(body.review.rules).toEqual([
       "Document should visually look like a Strathmore assessment cover page.",
       "Document should show Strathmore header branding on the first page.",
@@ -305,7 +309,7 @@ describe("upload prefill route", () => {
     globalThis.fetch = originalFetch;
   }, 15000);
 
-  it("rejects uploads that are not valid Strathmore assessment documents", async () => {
+  it("returns a reject review decision for non-assessment documents", async () => {
     useRendererResponse({
       pageRenderStatus: "rendered",
       paperTone: "non_white",
@@ -340,19 +344,21 @@ describe("upload prefill route", () => {
       },
       createEnv(testDb.db)
     );
-    const body = (await response.json()) as { success: boolean; message: string };
+    const body = (await response.json()) as UploadPrefillResponse;
 
     testDb.close();
 
-    expect(response.status).toBe(422);
-    expect(body.success).toBe(false);
-    expect(body.message).toBe(
-      "This PDF does not appear to be a valid Strathmore assessment document. Please upload a correct Strathmore CAT or exam paper."
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.review.documentKind).toBe("not_strathmore_cat_or_exam");
+    expect(body.review.decision).toBe("reject");
+    expect(body.review.decisionMessage).toBe(
+      "This PDF does not appear to be a valid institution assessment document. Please upload a correct institution CAT or exam paper."
     );
     globalThis.fetch = originalFetch;
   }, 15000);
 
-  it("rejects uploads when the rendered page appears white", async () => {
+  it("returns a review decision when the document looks institution-related but weak", async () => {
     useRendererResponse({
       pageRenderStatus: "rendered",
       paperTone: "white",
@@ -387,14 +393,16 @@ describe("upload prefill route", () => {
       },
       createEnv(testDb.db)
     );
-    const body = (await response.json()) as { success: boolean; message: string };
+    const body = (await response.json()) as UploadPrefillResponse;
 
     testDb.close();
 
-    expect(response.status).toBe(422);
-    expect(body.success).toBe(false);
-    expect(body.message).toBe(
-      "This PDF does not appear to be a valid Strathmore assessment document. Please upload a correct Strathmore CAT or exam paper."
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.review.documentKind).toBe("not_strathmore_cat_or_exam");
+    expect(body.review.decision).toBe("review");
+    expect(body.review.decisionMessage).toBe(
+      "We could not confidently verify this document automatically. Continue only if this is a real institution assessment paper."
     );
     globalThis.fetch = originalFetch;
   }, 15000);

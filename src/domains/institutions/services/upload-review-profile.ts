@@ -29,6 +29,8 @@ export type UploadReviewCheck = {
 export type UploadReviewResult = {
   documentKind: "strathmore_cat_or_exam" | "not_strathmore_cat_or_exam";
   documentFailureMessage: string | null;
+  decision: "accept" | "review" | "reject";
+  decisionMessage: string | null;
   visual: UploadVisualAnalysis;
   metadata: ExtractedMetadata;
   confidence: ExtractedConfidence;
@@ -103,6 +105,14 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
     const hasNonWhitePaper = visual.paperTone === "non_white";
     const hasStrathmoreHeaderBranding = visual.hasStrathmoreHeaderBranding;
     const hasAssessmentCoverLayout = visual.looksLikeAssessmentCoverPage;
+    const hasInstitutionSignal = hasStrathmoreHeaderBranding || Boolean(institutionName);
+    const metadataSignalCount = [
+      unitCode,
+      unitName,
+      isAcceptedAssessmentType ? paperType : null,
+      hasDate ? "date" : null,
+      hasTime ? "time" : null
+    ].filter(Boolean).length;
     const isStrathmoreAssessment =
       hasStrathmoreHeaderBranding &&
       hasAssessmentCoverLayout &&
@@ -113,6 +123,22 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
       hasDate &&
       hasTime &&
       hasNonWhitePaper;
+    const shouldReviewAsPossibleInstitutionAssessment =
+      !isStrathmoreAssessment &&
+      paperType !== "assignment" &&
+      hasInstitutionSignal &&
+      (hasAssessmentCoverLayout || metadataSignalCount >= 2 || isAcceptedAssessmentType);
+    const decision = isStrathmoreAssessment
+      ? "accept"
+      : shouldReviewAsPossibleInstitutionAssessment
+        ? "review"
+        : "reject";
+    const decisionMessage =
+      decision === "accept"
+        ? null
+        : decision === "review"
+          ? "We could not confidently verify this document automatically. Continue only if this is a real institution assessment paper."
+          : "This PDF does not appear to be a valid institution assessment document. Please upload a correct institution CAT or exam paper.";
 
     const checks: UploadReviewCheck[] = [
       {
@@ -213,6 +239,8 @@ const strathmoreProfile: InstitutionUploadReviewProfile = {
       documentFailureMessage: isStrathmoreAssessment
         ? null
         : "This PDF does not appear to be a valid Strathmore assessment document. Please upload a correct Strathmore CAT or exam paper.",
+      decision,
+      decisionMessage,
       visual,
       metadata: {
         institutionName,

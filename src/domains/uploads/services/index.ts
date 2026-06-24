@@ -1,5 +1,6 @@
 import { papersRepository } from "../../papers/repository";
 import { getInstitutionUploadReviewProfile } from "../../institutions/services";
+import type { UploadReviewResult } from "../../institutions/services/upload-review-profile";
 import { uploadsRepository } from "../repository";
 import { AppError } from "../../../lib/errors";
 import type { EnvBindings } from "../../../lib/app-env";
@@ -54,6 +55,39 @@ const requireConfirmField = (value: string | null | undefined, label: string) =>
   return normalizedValue;
 };
 
+const createPrefillPayload = ({
+  file,
+  fileHash,
+  extractedText,
+  review,
+  duplicateCheck
+}: {
+  file: File;
+  fileHash: string;
+  extractedText: string;
+  review: UploadReviewResult;
+  duplicateCheck: {
+    isDuplicate: boolean;
+    reason: "none" | "file_hash" | "metadata";
+    matchedPaperId: string | null;
+    matchedSubmissionId: string | null;
+  };
+}) => ({
+  file: {
+    name: file.name,
+    mimeType: file.type || "application/pdf",
+    sizeBytes: file.size,
+    hash: fileHash
+  },
+  extracted: {
+    textPreview: createTextPreview(extractedText),
+    metadata: review.metadata,
+    confidence: review.confidence
+  },
+  review,
+  duplicateCheck
+});
+
 export const uploadsService = {
   buildPrefill: async (db: D1Database, institutionId: string, file: File, env: EnvBindings) => {
     const fileBytes = await file.arrayBuffer();
@@ -71,42 +105,16 @@ export const uploadsService = {
       rendererUrl: env.PDF_RENDERER_URL,
       rendererToken: env.PDF_RENDERER_TOKEN
     });
-    const emptyReview = uploadReviewProfile.reviewUpload("", visual);
-
-    if (visual.paperTone === "white") {
-      throw new AppError(
-        emptyReview.documentFailureMessage ??
-          "This PDF does not appear to be a valid institution assessment document.",
-        422
-      );
-    }
-
     const extractedText = extractPdfText(fileText);
     const review = uploadReviewProfile.reviewUpload(extractedText, visual);
-
-    if (review.documentKind !== "strathmore_cat_or_exam") {
-      throw new AppError(
-        review.documentFailureMessage ??
-          "This PDF does not appear to be a valid institution assessment document.",
-        422
-      );
-    }
 
     const matchedPaperByHash = await papersRepository.findByFileHash(db, institutionId, fileHash);
 
     if (matchedPaperByHash) {
-      return {
-        file: {
-          name: file.name,
-          mimeType: file.type || "application/pdf",
-          sizeBytes: file.size,
-          hash: fileHash
-        },
-        extracted: {
-          textPreview: createTextPreview(extractedText),
-          metadata: review.metadata,
-          confidence: review.confidence
-        },
+      return createPrefillPayload({
+        file,
+        fileHash,
+        extractedText,
         review,
         duplicateCheck: {
           isDuplicate: true,
@@ -114,24 +122,16 @@ export const uploadsService = {
           matchedPaperId: matchedPaperByHash.id,
           matchedSubmissionId: null
         }
-      };
+      });
     }
 
     const matchedSubmissionByHash = await uploadsRepository.findByFileHash(db, institutionId, fileHash);
 
     if (matchedSubmissionByHash) {
-      return {
-        file: {
-          name: file.name,
-          mimeType: file.type || "application/pdf",
-          sizeBytes: file.size,
-          hash: fileHash
-        },
-        extracted: {
-          textPreview: createTextPreview(extractedText),
-          metadata: review.metadata,
-          confidence: review.confidence
-        },
+      return createPrefillPayload({
+        file,
+        fileHash,
+        extractedText,
         review,
         duplicateCheck: {
           isDuplicate: true,
@@ -139,7 +139,7 @@ export const uploadsService = {
           matchedPaperId: null,
           matchedSubmissionId: matchedSubmissionByHash.id
         }
-      };
+      });
     }
 
     if (review.metadata.unitCode && review.metadata.paperType && review.metadata.academicYear) {
@@ -152,18 +152,10 @@ export const uploadsService = {
       );
 
       if (matchedPaperByMetadata) {
-        return {
-          file: {
-            name: file.name,
-            mimeType: file.type || "application/pdf",
-            sizeBytes: file.size,
-            hash: fileHash
-          },
-          extracted: {
-            textPreview: createTextPreview(extractedText),
-            metadata: review.metadata,
-            confidence: review.confidence
-          },
+        return createPrefillPayload({
+          file,
+          fileHash,
+          extractedText,
           review,
           duplicateCheck: {
             isDuplicate: true,
@@ -171,7 +163,7 @@ export const uploadsService = {
             matchedPaperId: matchedPaperByMetadata.id,
             matchedSubmissionId: null
           }
-        };
+        });
       }
 
       const matchedSubmissionByMetadata = await uploadsRepository.findByMetadata(
@@ -183,18 +175,10 @@ export const uploadsService = {
       );
 
       if (matchedSubmissionByMetadata) {
-        return {
-          file: {
-            name: file.name,
-            mimeType: file.type || "application/pdf",
-            sizeBytes: file.size,
-            hash: fileHash
-          },
-          extracted: {
-            textPreview: createTextPreview(extractedText),
-            metadata: review.metadata,
-            confidence: review.confidence
-          },
+        return createPrefillPayload({
+          file,
+          fileHash,
+          extractedText,
           review,
           duplicateCheck: {
             isDuplicate: true,
@@ -202,22 +186,14 @@ export const uploadsService = {
             matchedPaperId: null,
             matchedSubmissionId: matchedSubmissionByMetadata.id
           }
-        };
+        });
       }
     }
 
-    return {
-      file: {
-        name: file.name,
-        mimeType: file.type || "application/pdf",
-        sizeBytes: file.size,
-        hash: fileHash
-      },
-      extracted: {
-        textPreview: createTextPreview(extractedText),
-        metadata: review.metadata,
-        confidence: review.confidence
-      },
+    return createPrefillPayload({
+      file,
+      fileHash,
+      extractedText,
       review,
       duplicateCheck: {
         isDuplicate: false,
@@ -225,7 +201,7 @@ export const uploadsService = {
         matchedPaperId: null,
         matchedSubmissionId: null
       }
-    };
+    });
   },
   confirmUpload: async (
     db: D1Database,
