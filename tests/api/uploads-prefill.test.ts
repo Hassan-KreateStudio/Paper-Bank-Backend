@@ -24,7 +24,9 @@ const authSecret = "super-secret-auth-token";
 
 const createEnv = (db: D1Database) => ({
   APP_ENV: "test",
-  WORKERS_AI_MODEL: "@cf/baai/bge-base-en-v1.5",
+  UPLOAD_REVIEW_MODEL: "@cf/google/gemma-4-26b-a4b-it",
+  EMBEDDING_MODEL: "@cf/baai/bge-base-en-v1.5",
+  RETRIEVAL_MODEL: "@cf/google/gemma-4-26b-a4b-it",
   AUTH_TOKEN_SECRET: authSecret,
   DB: db
 });

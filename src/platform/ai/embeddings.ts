@@ -1,4 +1,5 @@
 import type { EnvBindings } from "../../lib/app-env";
+import { getEmbeddingModel } from "./config";
 
 const EMBEDDING_DIMENSIONS = 64;
 
@@ -31,10 +32,11 @@ const createFallbackEmbedding = (text: string) => {
 
 export const createEmbedding = async (_env: EnvBindings, text: string) => {
   const ai = _env.AI as { run?: (model: string, payload: unknown) => Promise<unknown> } | undefined;
+  const embeddingModel = getEmbeddingModel(_env);
 
-  if (ai?.run && _env.WORKERS_AI_MODEL) {
+  if (ai?.run && embeddingModel) {
     try {
-      const result = (await ai.run(_env.WORKERS_AI_MODEL, {
+      const result = (await ai.run(embeddingModel, {
         text: [text]
       })) as { data?: number[][] };
       const vector = result.data?.[0];

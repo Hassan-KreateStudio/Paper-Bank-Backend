@@ -11,7 +11,9 @@ const migrationFiles = [
   "migrations/d1/0007_create_papers.sql",
   "migrations/d1/0008_create_review_decisions.sql",
   "migrations/d1/0009_add_paper_search_index.sql",
-  "migrations/d1/0010_create_waitlist_entries.sql"
+  "migrations/d1/0010_create_waitlist_entries.sql",
+  "migrations/d1/0011_add_upload_review_prompt_to_institutions.sql",
+  "migrations/d1/0012_seed_strathmore_upload_review_prompt.sql"
 ];
 
 class TestD1Statement {
@@ -66,6 +68,7 @@ export const createTestD1 = () => {
     slug: string;
     shortCode: string;
     emailDomain: string;
+    uploadReviewPrompt: string | null;
     status: string;
   }>) => {
     const now = new Date().toISOString();
@@ -75,6 +78,7 @@ export const createTestD1 = () => {
       slug: overrides?.slug ?? "strathmore",
       shortCode: overrides?.shortCode ?? "SU",
       emailDomain: overrides?.emailDomain ?? "strathmore.edu",
+      uploadReviewPrompt: overrides?.uploadReviewPrompt ?? null,
       status: overrides?.status ?? "active"
     };
 
@@ -87,11 +91,12 @@ export const createTestD1 = () => {
             slug,
             short_code,
             email_domain,
+            upload_review_prompt,
             status,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         `
       )
       .run(
@@ -100,6 +105,7 @@ export const createTestD1 = () => {
         institution.slug,
         institution.shortCode,
         institution.emailDomain,
+        institution.uploadReviewPrompt,
         institution.status,
         now,
         now

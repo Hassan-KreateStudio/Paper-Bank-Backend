@@ -26,10 +26,22 @@ export const createHealthReport = (env: EnvBindings): HealthReport => {
       status: env.APP_ENV ? "up" : "missing"
     },
     {
-      name: "workers_ai_model",
-      configured: Boolean(env.WORKERS_AI_MODEL),
+      name: "upload_review_model",
+      configured: Boolean(env.UPLOAD_REVIEW_MODEL),
+      required: true,
+      status: env.UPLOAD_REVIEW_MODEL ? "up" : "missing"
+    },
+    {
+      name: "embedding_model",
+      configured: Boolean(env.EMBEDDING_MODEL),
       required: false,
-      status: env.WORKERS_AI_MODEL ? "up" : "missing"
+      status: env.EMBEDDING_MODEL ? "up" : "missing"
+    },
+    {
+      name: "retrieval_model",
+      configured: Boolean(env.RETRIEVAL_MODEL),
+      required: false,
+      status: env.RETRIEVAL_MODEL ? "up" : "missing"
     },
     {
       name: "auth_email_delivery",

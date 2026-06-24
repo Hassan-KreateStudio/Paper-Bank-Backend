@@ -7,6 +7,7 @@ const institutionSelect = `
     slug,
     short_code AS shortCode,
     email_domain AS emailDomain,
+    upload_review_prompt AS uploadReviewPrompt,
     status
   FROM institutions
 `;

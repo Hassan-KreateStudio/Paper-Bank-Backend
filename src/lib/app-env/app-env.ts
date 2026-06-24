@@ -1,6 +1,8 @@
 export type EnvBindings = {
   APP_ENV: string;
-  WORKERS_AI_MODEL: string;
+  UPLOAD_REVIEW_MODEL: string;
+  EMBEDDING_MODEL: string;
+  RETRIEVAL_MODEL: string;
   AUTH_TOKEN_SECRET?: string;
   RESEND_API_KEY?: string;
   AUTH_EMAIL_FROM?: string;
