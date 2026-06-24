@@ -1,7 +1,9 @@
+import { NotFoundError, AppError } from "../../../lib/errors";
+import type { EnvBindings } from "../../../lib/app-env";
+import { extractUploadDocumentContent, reviewUploadDocument, type UploadReviewResult } from "../../../platform/ai/review";
+import { institutionsRepository } from "../../institutions/repository";
 import { papersRepository } from "../../papers/repository";
 import { uploadsRepository } from "../repository";
-import { AppError } from "../../../lib/errors";
-import type { EnvBindings } from "../../../lib/app-env";
 import { putPaperFile } from "../../../platform/storage";
 import { looksLikePdf } from "./pdf-text";
 
@@ -52,7 +54,7 @@ const requireConfirmField = (value: string | null | undefined, label: string) =>
   return normalizedValue;
 };
 
-const createPrefillPayload = ({ file, fileHash, duplicateCheck }: {
+const createPrefillPayload = ({ file, fileHash, duplicateCheck, review }: {
   file: File;
   fileHash: string;
   duplicateCheck: {
@@ -61,6 +63,7 @@ const createPrefillPayload = ({ file, fileHash, duplicateCheck }: {
     matchedPaperId: string | null;
     matchedSubmissionId: string | null;
   };
+  review: UploadReviewResult | null;
 }) => ({
   file: {
     name: file.name,
@@ -68,7 +71,8 @@ const createPrefillPayload = ({ file, fileHash, duplicateCheck }: {
     sizeBytes: file.size,
     hash: fileHash
   },
-  duplicateCheck
+  duplicateCheck,
+  review
 });
 
 export const uploadsService = {
@@ -90,7 +94,8 @@ export const uploadsService = {
           reason: "file_hash" as const,
           matchedPaperId: matchedPaperByHash.id,
           matchedSubmissionId: null
-        }
+        },
+        review: null
       });
     }
 
@@ -105,8 +110,31 @@ export const uploadsService = {
           reason: "file_hash" as const,
           matchedPaperId: null,
           matchedSubmissionId: matchedSubmissionByHash.id
-        }
+        },
+        review: null
       });
+    }
+
+    const institution = await institutionsRepository.findById(db, institutionId);
+
+    if (!institution) {
+      throw new NotFoundError("Institution was not found.");
+    }
+
+    const institutionPrompt = institution.uploadReviewPrompt?.trim();
+
+    if (!institutionPrompt) {
+      throw new AppError("Upload review prompt is not configured for this institution.", 500);
+    }
+
+    const documentContent = await extractUploadDocumentContent(env, file);
+    const review = await reviewUploadDocument(env, {
+      documentContent,
+      institutionPrompt
+    });
+
+    if (review.decision.status === "reject") {
+      throw new AppError(review.decision.message, 422);
     }
 
     return createPrefillPayload({
@@ -117,7 +145,8 @@ export const uploadsService = {
         reason: "none" as const,
         matchedPaperId: null,
         matchedSubmissionId: null
-      }
+      },
+      review
     });
   },
   confirmUpload: async (
