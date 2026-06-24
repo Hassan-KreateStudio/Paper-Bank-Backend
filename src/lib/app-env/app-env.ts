@@ -2,6 +2,8 @@ export type EnvBindings = {
   APP_ENV: string;
   WORKERS_AI_MODEL: string;
   AUTH_TOKEN_SECRET?: string;
+  RESEND_API_KEY?: string;
+  AUTH_EMAIL_FROM?: string;
   PDF_RENDERER_URL?: string;
   PDF_RENDERER_TOKEN?: string;
   DB?: D1Database;

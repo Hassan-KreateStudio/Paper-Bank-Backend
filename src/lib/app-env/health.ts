@@ -32,6 +32,12 @@ export const createHealthReport = (env: EnvBindings): HealthReport => {
       status: env.WORKERS_AI_MODEL ? "up" : "missing"
     },
     {
+      name: "auth_email_delivery",
+      configured: Boolean(env.RESEND_API_KEY && env.AUTH_EMAIL_FROM),
+      required: false,
+      status: env.RESEND_API_KEY && env.AUTH_EMAIL_FROM ? "up" : "missing"
+    },
+    {
       name: "d1",
       configured: Boolean(env.DB),
       required: false,

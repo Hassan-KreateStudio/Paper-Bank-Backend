@@ -23,7 +23,7 @@ authRoutes.post("/challenge", async (c) => {
       admissionNumber: requireText(payload.admissionNumber, "admissionNumber"),
       email: requireText(payload.email, "email"),
       fullName: requireText(payload.fullName, "fullName")
-    }))
+    }, c.env))
   });
 });
 

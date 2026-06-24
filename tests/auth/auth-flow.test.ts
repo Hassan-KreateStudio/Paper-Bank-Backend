@@ -58,12 +58,16 @@ const withVerificationCodeCapture = async <T>(run: () => Promise<T>) => {
 };
 
 describe("auth flow", () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     clearCache();
+    globalThis.fetch = originalFetch;
   });
 
   afterEach(() => {
     clearCache();
+    globalThis.fetch = originalFetch;
   });
 
   it("creates a challenge for a first-time student with an allowed institution email", async () => {
@@ -121,6 +125,73 @@ describe("auth flow", () => {
     expect(response.status).toBe(401);
     expect(body.success).toBe(false);
     expect(body.message).toContain("domain is not allowed");
+  });
+
+  it("sends the verification code by email when resend is configured", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution();
+    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      fetchCalls.push({
+        url: typeof url === "string" ? url : url.toString(),
+        init
+      });
+
+      return new Response(JSON.stringify({ id: "email_123" }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    }) as typeof fetch;
+
+    const response = await app.request(
+      "/api/auth/challenge",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          admissionNumber: "SCT221-0007/2022",
+          email: "resend.student@strathmore.edu",
+          fullName: "Resend Student"
+        })
+      },
+      {
+        ...createEnv(testDb.db),
+        RESEND_API_KEY: "re_test_key",
+        AUTH_EMAIL_FROM: "PaperBank <verify@paperbank.online>"
+      }
+    );
+    const body = (await response.json()) as ChallengeResponse;
+    const emailRequest = fetchCalls[0];
+    const emailPayload = JSON.parse(String(emailRequest.init?.body)) as {
+      from: string;
+      to: string[];
+      subject: string;
+      text: string;
+      html: string;
+    };
+
+    testDb.close();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(fetchCalls).toHaveLength(1);
+    expect(emailRequest.url).toBe("https://api.resend.com/emails");
+    expect(emailRequest.init?.method).toBe("POST");
+    expect(emailRequest.init?.headers).toMatchObject({
+      Authorization: "Bearer re_test_key",
+      "Content-Type": "application/json",
+      "User-Agent": "paper-bank-backend/0.1"
+    });
+    expect(emailPayload.from).toBe("PaperBank <verify@paperbank.online>");
+    expect(emailPayload.to).toEqual(["resend.student@strathmore.edu"]);
+    expect(emailPayload.subject).toBe("Your PaperBank verification code");
+    expect(emailPayload.text).toContain("Verification code:");
+    expect(emailPayload.html).toContain("PaperBank verification code");
   });
 
   it("creates the student on first verify, issues a token, and resolves the authenticated student", async () => {
