@@ -179,6 +179,21 @@ export const papersRepository = {
 
     return await papersRepository.findById(db, input.id);
   },
+  updateStatus: async (db: D1Database, id: string, status: string) => {
+    await db
+      .prepare(
+        `
+          UPDATE papers
+          SET status = ?2,
+              updated_at = ?3
+          WHERE id = ?1
+        `
+      )
+      .bind(id, status, new Date().toISOString())
+      .run();
+
+    return await papersRepository.findById(db, id);
+  },
   list: async (db: D1Database, institutionId: string, query?: string) => {
     const normalizedQuery = query?.trim();
     const searchPattern = normalizedQuery ? `%${normalizedQuery.toLowerCase()}%` : null;
@@ -241,6 +256,37 @@ export const papersRepository = {
         ).bind(institutionId);
 
     const result = await statement.all<Paper>();
+    return result.results;
+  },
+  listForReview: async (db: D1Database, institutionId: string) => {
+    const result = await db
+      .prepare(
+        `
+          SELECT
+            id,
+            institution_id AS institutionId,
+            source_upload_submission_id AS sourceUploadSubmissionId,
+            title,
+            unit_code AS unitCode,
+            unit_name AS unitName,
+            paper_type AS paperType,
+            academic_year AS academicYear,
+            status,
+            file_key AS fileKey,
+            file_hash AS fileHash,
+            document_fingerprint AS documentFingerprint,
+            extracted_text AS extractedText,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+          FROM papers
+          WHERE institution_id = ?1
+            AND status IN ('available', 'archived')
+          ORDER BY created_at DESC
+        `
+      )
+      .bind(institutionId)
+      .all<Paper>();
+
     return result.results;
   }
 };

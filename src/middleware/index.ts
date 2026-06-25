@@ -3,7 +3,8 @@ export {
   adminAccessMiddleware,
   authMiddleware,
   optionalAuthMiddleware,
-  reviewAccessMiddleware
+  reviewAccessMiddleware,
+  staffAuthMiddleware
 } from "./authentication";
 export { institutionMiddleware } from "./institution";
 export { rateLimitMiddleware } from "./rate-limit";

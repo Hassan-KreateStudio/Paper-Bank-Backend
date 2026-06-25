@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { hashStaffPassword } from "../../src/domains/staff-auth/password";
 
 const migrationFiles = [
   "migrations/d1/0001_create_institutions.sql",
@@ -16,7 +17,9 @@ const migrationFiles = [
   "migrations/d1/0012_seed_strathmore_upload_review_prompt.sql",
   "migrations/d1/0013_add_upload_review_fields.sql",
   "migrations/d1/0014_make_academic_year_optional.sql",
-  "migrations/d1/0015_add_student_role.sql"
+  "migrations/d1/0015_add_student_role.sql",
+  "migrations/d1/0016_create_staff_users.sql",
+  "migrations/d1/0017_create_staff_invites.sql"
 ];
 
 class TestD1Statement {
@@ -200,6 +203,153 @@ export const createTestD1 = () => {
           role: "student" | "reviewer" | "admin";
           status: string;
           emailVerifiedAt: string | null;
+        }
+      | null;
+  };
+
+  const seedStaffUser = async (overrides?: Partial<{
+    id: string;
+    institutionId: string | null;
+    email: string;
+    username: string;
+    password: string;
+    passwordHash: string;
+    role: "reviewer" | "admin";
+    status: "active" | "inactive";
+  }>) => {
+    const now = new Date().toISOString();
+    const institutionId =
+      overrides && "institutionId" in overrides ? overrides.institutionId ?? null : "inst_strathmore";
+    const staffUser = {
+      id: overrides?.id ?? crypto.randomUUID(),
+      institutionId,
+      email: overrides?.email ?? "staff@paperbank.online",
+      username: overrides?.username ?? "staff-user",
+      passwordHash:
+        overrides?.passwordHash ?? (await hashStaffPassword(overrides?.password ?? "super-secret-password")),
+      role: overrides?.role ?? "reviewer",
+      status: overrides?.status ?? "active"
+    };
+
+    sqlite
+      .query(
+        `
+          INSERT INTO staff_users (
+            id,
+            institution_id,
+            email,
+            username,
+            password_hash,
+            role,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        `
+      )
+      .run(
+        staffUser.id,
+        staffUser.institutionId,
+        staffUser.email,
+        staffUser.username,
+        staffUser.passwordHash,
+        staffUser.role,
+        staffUser.status,
+        now,
+        now
+      );
+
+    return staffUser;
+  };
+
+  const getStaffUser = (staffUserId: string) => {
+    return sqlite
+      .query(
+        `
+          SELECT
+            id,
+            institution_id AS institutionId,
+            email,
+            username,
+            password_hash AS passwordHash,
+            role,
+            status
+          FROM staff_users
+          WHERE id = ?1
+        `
+      )
+      .get(staffUserId) as
+      | {
+          id: string;
+          institutionId: string | null;
+          email: string;
+          username: string;
+          passwordHash: string;
+          role: "reviewer" | "admin";
+          status: "active" | "inactive";
+        }
+      | null;
+  };
+
+  const getStaffUserByEmail = (email: string) => {
+    return sqlite
+      .query(
+        `
+          SELECT
+            id,
+            institution_id AS institutionId,
+            email,
+            username,
+            password_hash AS passwordHash,
+            role,
+            status
+          FROM staff_users
+          WHERE LOWER(email) = ?1
+        `
+      )
+      .get(email.trim().toLowerCase()) as
+      | {
+          id: string;
+          institutionId: string | null;
+          email: string;
+          username: string;
+          passwordHash: string;
+          role: "reviewer" | "admin";
+          status: "active" | "inactive";
+        }
+      | null;
+  };
+
+  const getStaffInvite = (inviteId: string) => {
+    return sqlite
+      .query(
+        `
+          SELECT
+            id,
+            institution_id AS institutionId,
+            email,
+            username,
+            role,
+            invite_token_hash AS inviteTokenHash,
+            expires_at AS expiresAt,
+            consumed_at AS consumedAt,
+            invited_by_staff_user_id AS invitedByStaffUserId
+          FROM staff_invites
+          WHERE id = ?1
+        `
+      )
+      .get(inviteId) as
+      | {
+          id: string;
+          institutionId: string | null;
+          email: string;
+          username: string;
+          role: "reviewer" | "admin";
+          inviteTokenHash: string;
+          expiresAt: string;
+          consumedAt: string | null;
+          invitedByStaffUserId: string | null;
         }
       | null;
   };
@@ -456,10 +606,14 @@ export const createTestD1 = () => {
     close,
     seedInstitution,
     seedStudent,
+    seedStaffUser,
     seedPaper,
     seedUploadSubmission,
     seedWaitlistEntry,
     getStudent,
+    getStaffUser,
+    getStaffUserByEmail,
+    getStaffInvite,
     expireChallenge
   };
 };

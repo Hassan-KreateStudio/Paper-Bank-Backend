@@ -2,5 +2,6 @@ export {
   adminAccessMiddleware,
   authMiddleware,
   optionalAuthMiddleware,
-  reviewAccessMiddleware
+  reviewAccessMiddleware,
+  staffAuthMiddleware
 } from "./authentication.middleware";

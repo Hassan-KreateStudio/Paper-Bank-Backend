@@ -20,7 +20,7 @@ export const adminReviewRepository = {
           FROM upload_submissions
           INNER JOIN institutions
             ON institutions.id = upload_submissions.institution_id
-          WHERE upload_submissions.status = 'submitted'
+          WHERE upload_submissions.status IN ('submitted', 'in_review')
           ORDER BY upload_submissions.created_at DESC
         `
       )

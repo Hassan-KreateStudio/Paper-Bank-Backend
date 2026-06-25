@@ -1,7 +1,9 @@
 import type { EnvBindings } from "../../../lib/app-env";
 import { AppError, NotFoundError } from "../../../lib/errors";
 import type { StudentRole } from "../../students/contracts";
+import { institutionsRepository } from "../../institutions/repository";
 import { reviewService } from "../../review/services";
+import { staffAuthService } from "../../staff-auth/services";
 import {
   adminAnalyticsRepository,
   adminInstitutionsRepository,
@@ -54,7 +56,62 @@ export const adminService = {
       env,
       {
         institutionId: null,
-        studentRole: "admin"
+        staffRole: "admin"
+      },
+      uploadSubmissionId,
+      reviewerStudentId,
+      notes
+    );
+  },
+  getSubmission: async (db: D1Database, uploadSubmissionId: string) => {
+    return await reviewService.getSubmission(
+      db,
+      {
+        institutionId: null,
+        staffRole: "admin"
+      },
+      uploadSubmissionId
+    );
+  },
+  getSubmissionFile: async (db: D1Database, env: EnvBindings, uploadSubmissionId: string) => {
+    return await reviewService.getSubmissionFile(
+      db,
+      env,
+      {
+        institutionId: null,
+        staffRole: "admin"
+      },
+      uploadSubmissionId
+    );
+  },
+  rejectSubmission: async (
+    db: D1Database,
+    uploadSubmissionId: string,
+    reviewerStudentId: string | null,
+    notes: string | null
+  ) => {
+    return await reviewService.rejectSubmission(
+      db,
+      {
+        institutionId: null,
+        staffRole: "admin"
+      },
+      uploadSubmissionId,
+      reviewerStudentId,
+      notes
+    );
+  },
+  holdSubmission: async (
+    db: D1Database,
+    uploadSubmissionId: string,
+    reviewerStudentId: string | null,
+    notes: string | null
+  ) => {
+    return await reviewService.holdSubmission(
+      db,
+      {
+        institutionId: null,
+        staffRole: "admin"
       },
       uploadSubmissionId,
       reviewerStudentId,
@@ -64,10 +121,74 @@ export const adminService = {
   listPapers: async (db: D1Database) => {
     return await adminPapersRepository.list(db);
   },
+  getPaper: async (db: D1Database, paperId: string) => {
+    return await reviewService.getPaper(
+      db,
+      {
+        institutionId: null,
+        staffRole: "admin"
+      },
+      paperId
+    );
+  },
+  getPaperFile: async (db: D1Database, env: EnvBindings, paperId: string) => {
+    return await reviewService.getPaperFile(
+      db,
+      env,
+      {
+        institutionId: null,
+        staffRole: "admin"
+      },
+      paperId
+    );
+  },
+  archivePaper: async (
+    db: D1Database,
+    paperId: string,
+    reviewerStudentId: string | null,
+    notes: string | null
+  ) => {
+    return await reviewService.archivePaper(
+      db,
+      {
+        institutionId: null,
+        staffRole: "admin"
+      },
+      paperId,
+      reviewerStudentId,
+      notes
+    );
+  },
   listWaitlist: async (db: D1Database) => {
     return await adminWaitlistRepository.list(db);
   },
   getAnalyticsOverview: async (db: D1Database) => {
     return await adminAnalyticsRepository.overview(db);
+  },
+  inviteReviewer: async (
+    db: D1Database,
+    input: {
+      institutionId: string;
+      email: string;
+      invitedByStaffUserId: string;
+    },
+    env: Pick<EnvBindings, "APP_ENV" | "RESEND_API_KEY" | "AUTH_EMAIL_FROM">
+  ) => {
+    const institution = await institutionsRepository.findById(db, input.institutionId);
+
+    if (!institution) {
+      throw new NotFoundError("Institution was not found.");
+    }
+
+    return await staffAuthService.createReviewerInvitation(
+      db,
+      {
+        institutionId: institution.id,
+        institutionName: institution.name,
+        email: input.email,
+        invitedByStaffUserId: input.invitedByStaffUserId
+      },
+      env
+    );
   }
 };

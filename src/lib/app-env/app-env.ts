@@ -1,5 +1,6 @@
 import type { BrowserWorker } from "@cloudflare/playwright";
 import type { StudentRole } from "../../domains/students/contracts";
+import type { StaffRole } from "../../domains/staff-auth/contracts";
 
 export type EnvBindings = {
   APP_ENV: string;
@@ -7,6 +8,7 @@ export type EnvBindings = {
   EMBEDDING_MODEL: string;
   RETRIEVAL_MODEL: string;
   AUTH_TOKEN_SECRET?: string;
+  STAFF_AUTH_TOKEN_SECRET?: string;
   RESEND_API_KEY?: string;
   AUTH_EMAIL_FROM?: string;
   DB?: D1Database;
@@ -22,6 +24,8 @@ export type AppVariables = {
   institutionId: string | null;
   studentId: string | null;
   studentRole: StudentRole | null;
+  staffUserId: string | null;
+  staffRole: StaffRole | null;
 };
 
 export type AppEnv = {
