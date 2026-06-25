@@ -1,1 +1,6 @@
-export { authMiddleware, optionalAuthMiddleware, reviewAccessMiddleware } from "./authentication.middleware";
+export {
+  adminAccessMiddleware,
+  authMiddleware,
+  optionalAuthMiddleware,
+  reviewAccessMiddleware
+} from "./authentication.middleware";

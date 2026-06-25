@@ -415,6 +415,38 @@ export const createTestD1 = () => {
       .run(challengeId, new Date(Date.now() - 60_000).toISOString());
   };
 
+  const seedWaitlistEntry = (overrides?: Partial<{
+    id: string;
+    institutionId: string;
+    name: string;
+    email: string;
+  }>) => {
+    const entry = {
+      id: overrides?.id ?? crypto.randomUUID(),
+      institutionId: overrides?.institutionId ?? "inst_strathmore",
+      name: overrides?.name ?? "Interested Student",
+      email: overrides?.email ?? "waitlist.student@strathmore.edu",
+      createdAt: new Date().toISOString()
+    };
+
+    sqlite
+      .query(
+        `
+          INSERT INTO waitlist_entries (
+            id,
+            institution_id,
+            name,
+            email,
+            created_at
+          )
+          VALUES (?1, ?2, ?3, ?4, ?5)
+        `
+      )
+      .run(entry.id, entry.institutionId, entry.name, entry.email, entry.createdAt);
+
+    return entry;
+  };
+
   const close = () => {
     sqlite.close();
   };
@@ -426,6 +458,7 @@ export const createTestD1 = () => {
     seedStudent,
     seedPaper,
     seedUploadSubmission,
+    seedWaitlistEntry,
     getStudent,
     expireChallenge
   };

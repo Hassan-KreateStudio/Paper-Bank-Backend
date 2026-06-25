@@ -15,6 +15,7 @@ import { accessRoutes } from "../domains/access/routes";
 import { uploadRoutes } from "../domains/uploads/routes";
 import { reviewRoutes } from "../domains/review/routes";
 import { waitlistRoutes } from "../domains/waitlist/routes";
+import { adminRoutes } from "../domains/admin/routes";
 
 export const routes = new Hono<AppEnv>();
 const protectedApiRoutes = new Hono<AppEnv>();
@@ -43,6 +44,7 @@ protectedApiRoutes.route("/search", searchRoutes);
 protectedApiRoutes.route("/access", accessRoutes);
 protectedApiRoutes.route("/uploads", uploadRoutes);
 protectedApiRoutes.route("/review", reviewRoutes);
+protectedApiRoutes.route("/admin", adminRoutes);
 
 routes.route("/ping", pingRoute);
 routes.route("/health", healthRoute);

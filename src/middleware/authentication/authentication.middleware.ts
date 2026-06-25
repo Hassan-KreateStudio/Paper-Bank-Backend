@@ -103,3 +103,13 @@ export const reviewAccessMiddleware: MiddlewareHandler = async (c, next) => {
 
   await next();
 };
+
+export const adminAccessMiddleware: MiddlewareHandler = async (c, next) => {
+  const studentRole = c.get("studentRole");
+
+  if (studentRole !== "admin") {
+    throw new UnauthorizedError("Admin access is required.");
+  }
+
+  await next();
+};
