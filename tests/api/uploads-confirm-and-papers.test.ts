@@ -296,6 +296,160 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(body.message).toBe("Reviewer access is required.");
   });
 
+  it("allows an admin to see review submissions across institutions", async () => {
+    const testDb = createTestD1();
+    const bucket = createMockR2Bucket() as unknown as R2Bucket;
+    const env = createEnv(testDb.db, bucket);
+
+    testDb.seedInstitution();
+    testDb.seedInstitution({
+      id: "inst_other",
+      name: "Other University",
+      slug: "other",
+      shortCode: "OU",
+      emailDomain: "other.edu"
+    });
+    const admin = testDb.seedStudent({
+      admissionNumber: "SCT221-0009/2022",
+      email: "admin@strathmore.edu",
+      fullName: "Global Admin",
+      role: "admin",
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const otherInstitutionStudent = testDb.seedStudent({
+      institutionId: "inst_other",
+      admissionNumber: "OTH221-0001/2022",
+      email: "review.target@other.edu",
+      fullName: "Other Institution Student",
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+
+    testDb.seedUploadSubmission({
+      institutionId: "inst_strathmore",
+      studentId: admin.id,
+      title: "Strathmore Queue Paper"
+    });
+    testDb.seedUploadSubmission({
+      institutionId: "inst_other",
+      studentId: otherInstitutionStudent.id,
+      title: "Other Institution Queue Paper"
+    });
+
+    const adminAccessToken = await createAccessToken(admin.id, "inst_strathmore", "admin");
+
+    const response = await app.request(
+      "/api/review/queue",
+      {
+        headers: {
+          authorization: `Bearer ${adminAccessToken}`
+        }
+      },
+      env
+    );
+    const body = (await response.json()) as {
+      items: Array<{ institutionId: string; title: string }>;
+    };
+
+    testDb.close();
+
+    expect(response.status).toBe(200);
+    expect(body.items).toHaveLength(2);
+    expect(body.items.some((item) => item.institutionId === "inst_strathmore")).toBe(true);
+    expect(body.items.some((item) => item.institutionId === "inst_other")).toBe(true);
+    expect(body.items.some((item) => item.title === "Other Institution Queue Paper")).toBe(true);
+  });
+
+  it("allows an admin to approve a submission from another institution", async () => {
+    const testDb = createTestD1();
+    const bucket = createMockR2Bucket() as unknown as R2Bucket;
+    const env = createEnv(testDb.db, bucket);
+
+    testDb.seedInstitution();
+    testDb.seedInstitution({
+      id: "inst_other",
+      name: "Other University",
+      slug: "other",
+      shortCode: "OU",
+      emailDomain: "other.edu"
+    });
+    const admin = testDb.seedStudent({
+      admissionNumber: "SCT221-0010/2022",
+      email: "admin.approver@strathmore.edu",
+      fullName: "Approver Admin",
+      role: "admin",
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const otherInstitutionStudent = testDb.seedStudent({
+      institutionId: "inst_other",
+      admissionNumber: "OTH221-0002/2022",
+      email: "submitter@other.edu",
+      fullName: "Other Submitter",
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const otherInstitutionSubmission = testDb.seedUploadSubmission({
+      institutionId: "inst_other",
+      studentId: otherInstitutionStudent.id,
+      fileKey: "inst_other/upload-submissions/other-paper.pdf",
+      fileHash: "other-institution-file-hash",
+      title: "Other Institution Exam",
+      unitCode: "OTH 1001",
+      unitName: "Other Institution Unit",
+      paperType: "exam"
+    });
+
+    const file = await createExamPdfFile("other-approved.pdf");
+    const originalBytes = await file.arrayBuffer();
+    await (bucket as unknown as ReturnType<typeof createMockR2Bucket>).put(
+      otherInstitutionSubmission.fileKey,
+      originalBytes,
+      {
+        httpMetadata: {
+          contentType: "application/pdf",
+          contentDisposition: 'inline; filename="other-approved.pdf"'
+        },
+        customMetadata: {
+          institutionId: "inst_other",
+          studentId: otherInstitutionStudent.id,
+          kind: "upload_submission"
+        }
+      }
+    );
+
+    const adminAccessToken = await createAccessToken(admin.id, "inst_strathmore", "admin");
+
+    const response = await app.request(
+      `/api/review/submissions/${otherInstitutionSubmission.id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${adminAccessToken}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          notes: "Approved globally"
+        })
+      },
+      env
+    );
+    const body = (await response.json()) as {
+      success: boolean;
+      submission: { status: string };
+      paper: { institutionId: string; sourceUploadSubmissionId: string | null };
+    };
+
+    testDb.close();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.submission.status).toBe("approved");
+    expect(body.paper.institutionId).toBe("inst_other");
+    expect(body.paper.sourceUploadSubmissionId).toBe(otherInstitutionSubmission.id);
+  });
+
   it("rejects confirming the same exact pdf twice", async () => {
     const testDb = createTestD1();
     const bucket = createMockR2Bucket() as unknown as R2Bucket;

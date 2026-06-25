@@ -12,29 +12,50 @@ type ReviewQueueItem = {
 };
 
 export const reviewRepository = {
-  queue: async (db: D1Database, institutionId: string) => {
-    const result = await db
-      .prepare(
-        `
-          SELECT
-            id,
-            institution_id AS institutionId,
-            student_id AS studentId,
-            title,
-            unit_code AS unitCode,
-            unit_name AS unitName,
-            paper_type AS paperType,
-            academic_year AS academicYear,
-            status,
-            created_at AS createdAt
-          FROM upload_submissions
-          WHERE institution_id = ?1
-            AND status = 'submitted'
-          ORDER BY created_at DESC
-        `
-      )
-      .bind(institutionId)
-      .all<ReviewQueueItem>();
+  queue: async (db: D1Database, institutionId: string | null) => {
+    const result = institutionId
+      ? await db
+          .prepare(
+            `
+              SELECT
+                id,
+                institution_id AS institutionId,
+                student_id AS studentId,
+                title,
+                unit_code AS unitCode,
+                unit_name AS unitName,
+                paper_type AS paperType,
+                academic_year AS academicYear,
+                status,
+                created_at AS createdAt
+              FROM upload_submissions
+              WHERE institution_id = ?1
+                AND status = 'submitted'
+              ORDER BY created_at DESC
+            `
+          )
+          .bind(institutionId)
+          .all<ReviewQueueItem>()
+      : await db
+          .prepare(
+            `
+              SELECT
+                id,
+                institution_id AS institutionId,
+                student_id AS studentId,
+                title,
+                unit_code AS unitCode,
+                unit_name AS unitName,
+                paper_type AS paperType,
+                academic_year AS academicYear,
+                status,
+                created_at AS createdAt
+              FROM upload_submissions
+              WHERE status = 'submitted'
+              ORDER BY created_at DESC
+            `
+          )
+          .all<ReviewQueueItem>();
 
     return result.results;
   },

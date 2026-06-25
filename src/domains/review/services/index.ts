@@ -6,6 +6,7 @@ import { papersRepository } from "../../papers/repository";
 import { searchService } from "../../search/services";
 import { uploadsRepository } from "../../uploads/repository";
 import { reviewRepository } from "../repository";
+import type { StudentRole } from "../../students/contracts";
 
 const decodePdfTextFragment = (fragment: string) => {
   return fragment
@@ -27,20 +28,35 @@ const extractPdfTextFromBytes = (fileBytes: ArrayBuffer) => {
 };
 
 export const reviewService = {
-  reviewQueue: async (db: D1Database, institutionId: string) => {
-    return await reviewRepository.queue(db, institutionId);
+  reviewQueue: async (
+    db: D1Database,
+    scope: {
+      institutionId: string | null;
+      studentRole: StudentRole;
+    }
+  ) => {
+    return await reviewRepository.queue(
+      db,
+      scope.studentRole === "admin" ? null : scope.institutionId
+    );
   },
   approveSubmission: async (
     db: D1Database,
     env: EnvBindings,
-    institutionId: string,
+    scope: {
+      institutionId: string | null;
+      studentRole: StudentRole;
+    },
     uploadSubmissionId: string,
     reviewerStudentId: string | null,
     notes: string | null
   ) => {
     const submission = await uploadsRepository.findById(db, uploadSubmissionId);
 
-    if (!submission || submission.institutionId !== institutionId) {
+    if (
+      !submission ||
+      (scope.studentRole !== "admin" && submission.institutionId !== scope.institutionId)
+    ) {
       throw new NotFoundError("Upload submission was not found.");
     }
 
@@ -53,7 +69,11 @@ export const reviewService = {
       };
     }
 
-    const duplicatePaper = await papersRepository.findByFileHash(db, institutionId, submission.fileHash);
+    const duplicatePaper = await papersRepository.findByFileHash(
+      db,
+      submission.institutionId,
+      submission.fileHash
+    );
 
     if (duplicatePaper) {
       throw new AppError("This upload has already been approved into an existing paper.", 409);
