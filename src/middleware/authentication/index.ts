@@ -1,1 +1,1 @@
-export { authMiddleware, optionalAuthMiddleware } from "./authentication.middleware";
+export { authMiddleware, optionalAuthMiddleware, reviewAccessMiddleware } from "./authentication.middleware";

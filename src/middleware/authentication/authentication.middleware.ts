@@ -3,12 +3,14 @@ import { studentsRepository } from "../../domains/students/repository";
 import { verifyAuthToken } from "../../domains/auth/token";
 import { AppError, UnauthorizedError } from "../../lib/errors";
 import { getCached, setCached } from "../../platform/cache";
+import type { StudentRole } from "../../domains/students/contracts";
 
 const AUTH_SESSION_CACHE_TTL_SECONDS = 60;
 
 type CachedAuthSession = {
   studentId: string;
   institutionId: string;
+  studentRole: StudentRole;
 };
 
 const getBearerToken = (authorizationHeader: string | undefined) => {
@@ -41,6 +43,7 @@ const resolveAuthenticatedStudent = async (
   if (cachedSession) {
     c.set("studentId", cachedSession.studentId);
     c.set("institutionId", cachedSession.institutionId);
+    c.set("studentRole", cachedSession.studentRole);
     return;
   }
 
@@ -56,11 +59,13 @@ const resolveAuthenticatedStudent = async (
 
   c.set("studentId", student.id);
   c.set("institutionId", student.institutionId);
+  c.set("studentRole", student.role);
   await setCached(
     `auth_session:${token}`,
     {
       studentId: student.id,
-      institutionId: student.institutionId
+      institutionId: student.institutionId,
+      studentRole: student.role
     },
     AUTH_SESSION_CACHE_TTL_SECONDS
   );
@@ -86,5 +91,15 @@ export const optionalAuthMiddleware: MiddlewareHandler = async (c, next) => {
   }
 
   await resolveAuthenticatedStudent(c, token);
+  await next();
+};
+
+export const reviewAccessMiddleware: MiddlewareHandler = async (c, next) => {
+  const studentRole = c.get("studentRole");
+
+  if (studentRole !== "reviewer" && studentRole !== "admin") {
+    throw new UnauthorizedError("Reviewer access is required.");
+  }
+
   await next();
 };

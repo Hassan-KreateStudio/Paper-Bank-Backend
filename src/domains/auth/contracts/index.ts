@@ -1,6 +1,9 @@
+import type { StudentRole } from "../../students/contracts";
+
 export type StudentSession = {
   studentId: string;
   institutionId: string;
+  role: StudentRole;
 };
 
 export type AuthChallenge = {

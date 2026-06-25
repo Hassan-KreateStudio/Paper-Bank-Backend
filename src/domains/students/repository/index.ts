@@ -7,6 +7,7 @@ const studentSelect = `
     admission_number AS admissionNumber,
     email,
     full_name AS fullName,
+    role,
     status,
     email_verified_at AS emailVerifiedAt
   FROM students
@@ -45,12 +46,13 @@ export const studentsRepository = {
             admission_number,
             email,
             full_name,
+            role,
             status,
             email_verified_at,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)
         `
       )
       .bind(
@@ -59,6 +61,7 @@ export const studentsRepository = {
         input.admissionNumber,
         input.email,
         input.fullName,
+        input.role ?? "student",
         input.status ?? "pending_verification",
         now,
         now
@@ -71,6 +74,7 @@ export const studentsRepository = {
       admissionNumber: input.admissionNumber,
       email: input.email,
       fullName: input.fullName,
+      role: input.role ?? "student",
       status: input.status ?? "pending_verification",
       emailVerifiedAt: null
     } satisfies Student;

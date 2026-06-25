@@ -15,7 +15,8 @@ const migrationFiles = [
   "migrations/d1/0011_add_upload_review_prompt_to_institutions.sql",
   "migrations/d1/0012_seed_strathmore_upload_review_prompt.sql",
   "migrations/d1/0013_add_upload_review_fields.sql",
-  "migrations/d1/0014_make_academic_year_optional.sql"
+  "migrations/d1/0014_make_academic_year_optional.sql",
+  "migrations/d1/0015_add_student_role.sql"
 ];
 
 class TestD1Statement {
@@ -122,6 +123,7 @@ export const createTestD1 = () => {
     admissionNumber: string;
     email: string;
     fullName: string;
+    role: "student" | "reviewer" | "admin";
     status: string;
     emailVerifiedAt: string | null;
   }>) => {
@@ -132,6 +134,7 @@ export const createTestD1 = () => {
       admissionNumber: overrides?.admissionNumber ?? "SCT221-0001/2022",
       email: overrides?.email ?? "test.student@strathmore.edu",
       fullName: overrides?.fullName ?? "Test Student",
+      role: overrides?.role ?? "student",
       status: overrides?.status ?? "pending_verification",
       emailVerifiedAt: overrides?.emailVerifiedAt ?? null
     };
@@ -145,12 +148,13 @@ export const createTestD1 = () => {
             admission_number,
             email,
             full_name,
+            role,
             status,
             email_verified_at,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
         `
       )
       .run(
@@ -159,6 +163,7 @@ export const createTestD1 = () => {
         student.admissionNumber,
         student.email,
         student.fullName,
+        student.role,
         student.status,
         student.emailVerifiedAt,
         now,
@@ -178,6 +183,7 @@ export const createTestD1 = () => {
             admission_number AS admissionNumber,
             email,
             full_name AS fullName,
+            role,
             status,
             email_verified_at AS emailVerifiedAt
           FROM students
@@ -191,6 +197,7 @@ export const createTestD1 = () => {
           admissionNumber: string;
           email: string;
           fullName: string;
+          role: "student" | "reviewer" | "admin";
           status: string;
           emailVerifiedAt: string | null;
         }

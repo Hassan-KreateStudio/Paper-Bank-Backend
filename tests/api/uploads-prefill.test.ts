@@ -173,8 +173,12 @@ const createEnv = (
   }
 });
 
-const createAccessToken = async (studentId: string, institutionId = "inst_strathmore") => {
-  const token = await createAuthToken(studentId, institutionId, authSecret);
+const createAccessToken = async (
+  studentId: string,
+  institutionId = "inst_strathmore",
+  role: "student" | "reviewer" | "admin" = "student"
+) => {
+  const token = await createAuthToken(studentId, institutionId, role, authSecret);
   return token.token;
 };
 

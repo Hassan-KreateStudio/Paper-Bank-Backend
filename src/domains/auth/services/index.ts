@@ -290,12 +290,18 @@ export const authService = {
     await authRepository.attachStudent(db, challenge.id, student.id);
     await authRepository.consumeChallenge(db, challenge.id, consumedAt);
     await studentsRepository.markVerified(db, student.id, consumedAt);
-    const authToken = await createAuthToken(student.id, challenge.institutionId, env.AUTH_TOKEN_SECRET ?? "");
+    const authToken = await createAuthToken(
+      student.id,
+      challenge.institutionId,
+      student.role,
+      env.AUTH_TOKEN_SECRET ?? ""
+    );
 
     return {
       authenticated: true,
       studentId: student.id,
       institutionId: challenge.institutionId,
+      role: student.role,
       consumedAt,
       accessToken: authToken.token,
       expiresAt: authToken.expiresAt

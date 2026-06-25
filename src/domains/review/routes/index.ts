@@ -3,8 +3,11 @@ import type { AppEnv } from "../../../lib/app-env";
 import { requireDb } from "../../../platform/db";
 import { UnauthorizedError } from "../../../lib/errors";
 import { reviewService } from "../services";
+import { reviewAccessMiddleware } from "../../../middleware";
 
 export const reviewRoutes = new Hono<AppEnv>();
+
+reviewRoutes.use("*", reviewAccessMiddleware);
 
 reviewRoutes.get("/queue", async (c) => {
   const db = requireDb(c.env);

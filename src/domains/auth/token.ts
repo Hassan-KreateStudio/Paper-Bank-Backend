@@ -1,10 +1,12 @@
 import { AppError, UnauthorizedError } from "../../lib/errors";
+import type { StudentRole } from "../students/contracts";
 
 const TOKEN_TTL_HOURS = 24;
 
 type AuthTokenPayload = {
   sub: string;
   institutionId: string;
+  role: StudentRole;
   exp: number;
 };
 
@@ -40,6 +42,7 @@ const sign = async (value: string, secret: string) => {
 export const createAuthToken = async (
   studentId: string,
   institutionId: string,
+  role: StudentRole,
   secret: string
 ) => {
   if (!secret) {
@@ -49,6 +52,7 @@ export const createAuthToken = async (
   const payload: AuthTokenPayload = {
     sub: studentId,
     institutionId,
+    role,
     exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_HOURS * 60 * 60
   };
 

@@ -1,4 +1,5 @@
 import type { BrowserWorker } from "@cloudflare/playwright";
+import type { StudentRole } from "../../domains/students/contracts";
 
 export type EnvBindings = {
   APP_ENV: string;
@@ -20,6 +21,7 @@ export type AppVariables = {
   requestId: string;
   institutionId: string | null;
   studentId: string | null;
+  studentRole: StudentRole | null;
 };
 
 export type AppEnv = {

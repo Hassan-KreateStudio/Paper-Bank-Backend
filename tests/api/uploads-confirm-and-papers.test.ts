@@ -7,8 +7,12 @@ import { createTestD1 } from "../support/test-d1";
 
 const authSecret = "super-secret-auth-token";
 
-const createAccessToken = async (studentId: string, institutionId = "inst_strathmore") => {
-  const token = await createAuthToken(studentId, institutionId, authSecret);
+const createAccessToken = async (
+  studentId: string,
+  institutionId = "inst_strathmore",
+  role: "student" | "reviewer" | "admin" = "student"
+) => {
+  const token = await createAuthToken(studentId, institutionId, role, authSecret);
   return token.token;
 };
 
@@ -65,7 +69,16 @@ describe("upload confirm and paper retrieval flow", () => {
       status: "active",
       emailVerifiedAt: new Date().toISOString()
     });
+    const reviewer = testDb.seedStudent({
+      admissionNumber: "SCT221-0099/2022",
+      email: "reviewer@strathmore.edu",
+      fullName: "Reviewer User",
+      role: "reviewer",
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
     const accessToken = await createAccessToken(student.id);
+    const reviewerAccessToken = await createAccessToken(reviewer.id, "inst_strathmore", "reviewer");
     const file = await createExamPdfFile();
     const originalBytes = await file.arrayBuffer();
     const formData = new FormData();
@@ -145,7 +158,7 @@ describe("upload confirm and paper retrieval flow", () => {
       "/api/review/queue",
       {
         headers: {
-          authorization: `Bearer ${accessToken}`
+          authorization: `Bearer ${reviewerAccessToken}`
         }
       },
       env
@@ -162,7 +175,7 @@ describe("upload confirm and paper retrieval flow", () => {
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${accessToken}`,
+          authorization: `Bearer ${reviewerAccessToken}`,
           "content-type": "application/json"
         },
         body: JSON.stringify({
@@ -198,7 +211,7 @@ describe("upload confirm and paper retrieval flow", () => {
       "/api/papers?query=bit%202205",
       {
         headers: {
-          authorization: `Bearer ${accessToken}`
+          authorization: `Bearer ${reviewerAccessToken}`
         }
       },
       env
@@ -217,7 +230,7 @@ describe("upload confirm and paper retrieval flow", () => {
       `/api/papers/${approveBody.paper.id}`,
       {
         headers: {
-          authorization: `Bearer ${accessToken}`
+          authorization: `Bearer ${reviewerAccessToken}`
         }
       },
       env
@@ -239,7 +252,7 @@ describe("upload confirm and paper retrieval flow", () => {
       `/api/papers/${approveBody.paper.id}/file`,
       {
         headers: {
-          authorization: `Bearer ${accessToken}`
+          authorization: `Bearer ${reviewerAccessToken}`
         }
       },
       env
@@ -252,6 +265,36 @@ describe("upload confirm and paper retrieval flow", () => {
 
     testDb.close();
   }, 20000);
+
+  it("blocks a normal student from accessing the review queue", async () => {
+    const testDb = createTestD1();
+    const bucket = createMockR2Bucket() as unknown as R2Bucket;
+    const env = createEnv(testDb.db, bucket);
+
+    testDb.seedInstitution();
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+
+    const response = await app.request(
+      "/api/review/queue",
+      {
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        }
+      },
+      env
+    );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(response.status).toBe(401);
+    expect(body.success).toBe(false);
+    expect(body.message).toBe("Reviewer access is required.");
+  });
 
   it("rejects confirming the same exact pdf twice", async () => {
     const testDb = createTestD1();
@@ -322,7 +365,16 @@ describe("upload confirm and paper retrieval flow", () => {
       status: "active",
       emailVerifiedAt: new Date().toISOString()
     });
+    const reviewer = testDb.seedStudent({
+      admissionNumber: "SCT221-0100/2022",
+      email: "search.reviewer@strathmore.edu",
+      fullName: "Search Reviewer",
+      role: "reviewer",
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
     const accessToken = await createAccessToken(student.id);
+    const reviewerAccessToken = await createAccessToken(reviewer.id, "inst_strathmore", "reviewer");
 
     const createConfirmedSubmission = async (file: File, fields: Record<string, string>) => {
       const formData = new FormData();
@@ -356,7 +408,7 @@ describe("upload confirm and paper retrieval flow", () => {
         {
           method: "POST",
           headers: {
-            authorization: `Bearer ${accessToken}`,
+            authorization: `Bearer ${reviewerAccessToken}`,
             "content-type": "application/json"
           },
           body: JSON.stringify({})

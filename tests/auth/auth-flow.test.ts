@@ -14,6 +14,7 @@ type VerifyResponse = {
   authenticated: boolean;
   studentId: string;
   institutionId: string;
+  role: "student" | "reviewer" | "admin";
   accessToken: string;
   expiresAt: string;
 };
@@ -286,6 +287,7 @@ describe("auth flow", () => {
         id: string;
         admissionNumber: string;
         email: string;
+        role: "student" | "reviewer" | "admin";
         status: string;
       };
     };
@@ -303,6 +305,7 @@ describe("auth flow", () => {
       success?: boolean;
       student: {
         id: string;
+        role: "student" | "reviewer" | "admin";
         status: string;
       };
     };
@@ -313,6 +316,7 @@ describe("auth flow", () => {
     expect(verifyBody.success).toBe(true);
     expect(verifyBody.authenticated).toBe(true);
     expect(verifyBody.institutionId).toBe("inst_strathmore");
+    expect(verifyBody.role).toBe("student");
     expect(verifyBody.accessToken).toBeString();
 
     expect(sessionResponse.status).toBe(200);
@@ -320,15 +324,18 @@ describe("auth flow", () => {
     expect(sessionBody.authenticated).toBe(true);
     expect(sessionBody.student.admissionNumber).toBe(admissionNumber);
     expect(sessionBody.student.email).toBe(email);
+    expect(sessionBody.student.role).toBe("student");
 
     expect(meResponse.status).toBe(200);
     expect(meBody.student.id).toBe(verifyBody.studentId);
+    expect(meBody.student.role).toBe("student");
     expect(meBody.student.status).toBe("active");
 
     expect(storedStudent?.status).toBe("active");
     expect(storedStudent?.admissionNumber).toBe(admissionNumber);
     expect(storedStudent?.email).toBe(email);
     expect(storedStudent?.fullName).toBe(fullName);
+    expect(storedStudent?.role).toBe("student");
     expect(storedStudent?.emailVerifiedAt).toBeString();
   });
 
