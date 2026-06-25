@@ -6,7 +6,7 @@ export type Paper = {
   unitCode: string;
   unitName: string;
   paperType: string;
-  academicYear: string;
+  academicYear: string | null;
   status: string;
   fileKey: string;
   fileHash: string;

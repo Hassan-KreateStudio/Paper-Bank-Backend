@@ -4,7 +4,7 @@ type SearchChunkRow = {
   unitCode: string;
   unitName: string;
   paperType: string;
-  academicYear: string;
+  academicYear: string | null;
   content: string;
   embeddingJson: string;
   chunkIndex: number;

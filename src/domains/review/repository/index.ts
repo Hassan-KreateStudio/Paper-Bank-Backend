@@ -6,7 +6,7 @@ type ReviewQueueItem = {
   unitCode: string;
   unitName: string;
   paperType: string;
-  academicYear: string;
+  academicYear: string | null;
   status: string;
   createdAt: string;
 };

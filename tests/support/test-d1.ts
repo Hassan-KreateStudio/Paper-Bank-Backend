@@ -14,7 +14,8 @@ const migrationFiles = [
   "migrations/d1/0010_create_waitlist_entries.sql",
   "migrations/d1/0011_add_upload_review_prompt_to_institutions.sql",
   "migrations/d1/0012_seed_strathmore_upload_review_prompt.sql",
-  "migrations/d1/0013_add_upload_review_fields.sql"
+  "migrations/d1/0013_add_upload_review_fields.sql",
+  "migrations/d1/0014_make_academic_year_optional.sql"
 ];
 
 class TestD1Statement {
@@ -204,7 +205,7 @@ export const createTestD1 = () => {
     unitCode: string;
     unitName: string;
     paperType: string;
-    academicYear: string;
+    academicYear: string | null;
     status: string;
     fileKey: string;
     fileHash: string;
@@ -220,7 +221,7 @@ export const createTestD1 = () => {
       unitCode: overrides?.unitCode ?? "BIT 2205",
       unitName: overrides?.unitName ?? "Database Systems",
       paperType: overrides?.paperType ?? "exam",
-      academicYear: overrides?.academicYear ?? "2023/2024",
+      academicYear: overrides?.academicYear ?? null,
       status: overrides?.status ?? "available",
       fileKey: overrides?.fileKey ?? "papers/database-systems.pdf",
       fileHash: overrides?.fileHash ?? "existing-file-hash",
@@ -280,7 +281,7 @@ export const createTestD1 = () => {
     unitCode: string;
     unitName: string;
     paperType: string;
-    academicYear: string;
+    academicYear: string | null;
     description: string | null;
     fileKey: string;
     fileName: string;
@@ -295,15 +296,34 @@ export const createTestD1 = () => {
     status: string;
   }>) => {
     const now = new Date().toISOString();
+    const existingStudent = sqlite
+      .query(
+        `
+          SELECT id
+          FROM students
+          WHERE institution_id = ?1
+          ORDER BY created_at ASC
+          LIMIT 1
+        `
+      )
+      .get((overrides?.institutionId ?? "inst_strathmore")) as { id: string } | null;
+    const ensuredStudentId =
+      overrides?.studentId ??
+      existingStudent?.id ??
+      seedStudent({
+        institutionId: overrides?.institutionId ?? "inst_strathmore",
+        status: "active",
+        emailVerifiedAt: now
+      }).id;
     const submission = {
       id: overrides?.id ?? crypto.randomUUID(),
       institutionId: overrides?.institutionId ?? "inst_strathmore",
-      studentId: overrides?.studentId ?? crypto.randomUUID(),
+      studentId: ensuredStudentId,
       title: overrides?.title ?? "Database Systems End Semester Exam",
       unitCode: overrides?.unitCode ?? "BIT 2205",
       unitName: overrides?.unitName ?? "Database Systems",
       paperType: overrides?.paperType ?? "exam",
-      academicYear: overrides?.academicYear ?? "2023/2024",
+      academicYear: overrides?.academicYear ?? null,
       description: overrides?.description ?? null,
       fileKey: overrides?.fileKey ?? "uploads/database-systems.pdf",
       fileName: overrides?.fileName ?? "database-systems.pdf",

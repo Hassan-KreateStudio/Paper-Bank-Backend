@@ -6,7 +6,7 @@ export type UploadRecord = {
   unitCode: string;
   unitName: string;
   paperType: string;
-  academicYear: string;
+  academicYear: string | null;
   description: string | null;
   fileKey: string;
   fileName: string;

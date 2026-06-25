@@ -44,9 +44,9 @@ const createFileHash = async (fileBytes: ArrayBuffer) => {
     .join("");
 };
 
-const buildUploadTitle = (unitName: string, paperType: string, academicYear: string) => {
+const buildUploadTitle = (unitName: string, paperType: string) => {
   const normalizedPaperType = paperType.trim().toUpperCase();
-  return `${unitName.trim()} ${normalizedPaperType} ${academicYear.trim()}`.trim();
+  return `${unitName.trim()} ${normalizedPaperType}`.trim();
 };
 
 const sanitizePathSegment = (value: string) => {
@@ -133,7 +133,6 @@ const createPrefillPayload = ({ file, fileHash, duplicateCheck, review, document
     unitName: review.metadata.unitName,
     paperType: mapExtractedPaperType(review.document.paperType),
     assessmentDate: review.metadata.date,
-    academicYear: review.metadata.academicYear,
     assessmentNumber: documentIdentity.assessmentNumber,
     title: review.metadata.title
   },
@@ -315,7 +314,7 @@ export const uploadsService = {
       unitCode: string | null | undefined;
       unitName: string | null | undefined;
       paperType: string | null | undefined;
-      academicYear: string | null | undefined;
+      academicYear?: string | null | undefined;
       title?: string | null | undefined;
       description?: string | null | undefined;
       modelLabel?: string | null | undefined;
@@ -334,8 +333,8 @@ export const uploadsService = {
     const unitCode = requireConfirmField(input.unitCode, "Unit code");
     const unitName = requireConfirmField(input.unitName, "Unit name");
     const paperType = requireConfirmField(input.paperType, "Paper type").toLowerCase();
-    const academicYear = requireConfirmField(input.academicYear, "Academic year");
-    const title = input.title?.trim() || buildUploadTitle(unitName, paperType, academicYear);
+    const academicYear = optionalConfirmField(input.academicYear);
+    const title = input.title?.trim() || buildUploadTitle(unitName, paperType);
     const description = input.description?.trim() || null;
     const modelLabel = optionalConfirmField(input.modelLabel);
     const modelConfidence = optionalConfirmNumber(input.modelConfidence, "Model confidence");

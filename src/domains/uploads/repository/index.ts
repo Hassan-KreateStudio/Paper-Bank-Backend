@@ -5,7 +5,7 @@ type UploadDuplicateCandidate = {
   title: string;
   unitCode: string;
   paperType: string;
-  academicYear: string;
+  academicYear: string | null;
   status: string;
 };
 
@@ -74,7 +74,7 @@ export const uploadsRepository = {
     institutionId: string,
     unitCode: string,
     paperType: string,
-    academicYear: string
+    academicYear: string | null
   ) => {
     return db
       .prepare(

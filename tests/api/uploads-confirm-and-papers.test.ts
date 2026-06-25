@@ -74,8 +74,7 @@ describe("upload confirm and paper retrieval flow", () => {
     formData.set("unitCode", "BIT 2205");
     formData.set("unitName", "Database Systems");
     formData.set("paperType", "exam");
-    formData.set("academicYear", "2023/2024");
-    formData.set("title", "Database Systems Exam 2023/2024");
+    formData.set("title", "Database Systems Exam");
     formData.set("modelLabel", "accept");
     formData.set("modelConfidence", "0.93");
     formData.set(
@@ -110,7 +109,7 @@ describe("upload confirm and paper retrieval flow", () => {
         unitCode: string;
         unitName: string;
         paperType: string;
-        academicYear: string;
+        academicYear: string | null;
         fileKey: string;
         fileHash: string;
         modelLabel: string | null;
@@ -273,7 +272,6 @@ describe("upload confirm and paper retrieval flow", () => {
       formData.set("unitCode", "BIT 2205");
       formData.set("unitName", "Database Systems");
       formData.set("paperType", "exam");
-      formData.set("academicYear", "2023/2024");
       return formData;
     };
 
@@ -431,7 +429,7 @@ describe("upload confirm and paper retrieval flow", () => {
     const latestCatBody = (await latestCatResponse.json()) as {
       results: Array<{
         title: string;
-        academicYear: string;
+        academicYear: string | null;
       }>;
     };
 

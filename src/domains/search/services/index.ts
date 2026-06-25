@@ -67,7 +67,7 @@ const scoreMetadataMatch = (
     unitCode: string;
     unitName: string;
     paperType: string;
-    academicYear: string;
+    academicYear: string | null;
   }
 ) => {
   const normalizedQuery = query.toLowerCase();
@@ -76,7 +76,7 @@ const scoreMetadataMatch = (
     candidate.unitCode,
     candidate.unitName,
     candidate.paperType,
-    candidate.academicYear
+    candidate.academicYear ?? ""
   ]
     .join(" ")
     .toLowerCase();
@@ -245,7 +245,7 @@ export const searchService = {
     const results = Array.from(rankedPapers.values())
       .sort((left, right) => {
         if (filters.wantsLatest && left.academicYear !== right.academicYear) {
-          return right.academicYear.localeCompare(left.academicYear);
+          return (right.academicYear ?? "").localeCompare(left.academicYear ?? "");
         }
 
         return right.score - left.score;

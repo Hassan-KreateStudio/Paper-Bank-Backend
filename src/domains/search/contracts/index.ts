@@ -5,7 +5,7 @@ export type SearchResult = {
   unitCode: string;
   unitName: string;
   paperType: string;
-  academicYear: string;
+  academicYear: string | null;
   snippet: string;
   matchReason: "metadata" | "content" | "hybrid";
 };

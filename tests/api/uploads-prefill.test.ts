@@ -25,7 +25,6 @@ type UploadPrefillResponse = {
     unitName: string | null;
     paperType: "cat" | "exam" | "assignment" | "other" | null;
     assessmentDate: string | null;
-    academicYear: string | null;
     assessmentNumber: string | null;
     title: string | null;
   };
@@ -286,7 +285,6 @@ describe("upload prefill route", () => {
       unitName: "Database Systems",
       paperType: "cat",
       assessmentDate: "2026-05-11",
-      academicYear: "2023/2024",
       assessmentNumber: null,
       title: "Database Systems CAT"
     });
@@ -800,7 +798,6 @@ describe("upload prefill route", () => {
       unitName: "Database Systems",
       paperType: "cat",
       assessmentDate: null,
-      academicYear: "2023/2024",
       assessmentNumber: null,
       title: "Database Systems CAT"
     });
