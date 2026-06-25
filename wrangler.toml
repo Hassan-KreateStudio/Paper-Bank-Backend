@@ -1,6 +1,7 @@
 name = "paper-bank-backend"
 main = "src/index.ts"
 compatibility_date = "2026-06-18"
+compatibility_flags = ["nodejs_compat"]
 account_id = "f41c4320cb7f3ed1b791e8c54ba8d4a6"
 
 [vars]
@@ -11,6 +12,9 @@ RETRIEVAL_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 
 [ai]
 binding = "AI"
+
+[browser]
+binding = "BROWSER"
 
 [[d1_databases]]
 binding = "DB"

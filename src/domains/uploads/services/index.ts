@@ -152,6 +152,26 @@ const createManualReviewDecision = (
   }
 });
 
+const createInstitutionSpecificRejectMessage = (
+  review: UploadReviewResult,
+  institutionName: string
+) => {
+  const normalizedDecisionMessage = review.decision.message.trim().toLowerCase();
+
+  if (
+    normalizedDecisionMessage.includes("cv") ||
+    normalizedDecisionMessage.includes("resume")
+  ) {
+    return `The document is a personal CV/Resume and does not constitute a ${institutionName} academic assessment document.`;
+  }
+
+  if (review.document.isValidAssessment && !review.institution.matchesExpected) {
+    return `This appears to be an academic assessment document, but it does not appear to belong to ${institutionName}. Please upload a valid ${institutionName} assessment paper.`;
+  }
+
+  return `This document does not appear to be a valid ${institutionName} academic assessment document. Please upload a correct ${institutionName} assessment paper.`;
+};
+
 const ensureSupportedAssessmentType = (
   assessmentType: NormalizedAssessmentType,
   institutionName: string
@@ -222,7 +242,7 @@ export const uploadsService = {
     });
 
     if (review.decision.status === "reject") {
-      throw new AppError(review.decision.message, 422);
+      throw new AppError(createInstitutionSpecificRejectMessage(review, institution.name), 422);
     }
 
     const documentIdentity = normalizeDocumentFingerprint({

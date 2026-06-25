@@ -1,3 +1,5 @@
+import type { BrowserWorker } from "@cloudflare/playwright";
+
 export type EnvBindings = {
   APP_ENV: string;
   UPLOAD_REVIEW_MODEL: string;
@@ -10,6 +12,7 @@ export type EnvBindings = {
   PAPERS_BUCKET?: R2Bucket;
   PAPERS_VECTOR_INDEX?: VectorizeIndex;
   AI?: Ai;
+  BROWSER?: BrowserWorker;
   HYPERDRIVE?: Hyperdrive;
 };
 

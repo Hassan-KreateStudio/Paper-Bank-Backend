@@ -1,6 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import app from "../../src";
 import { createAuthToken } from "../../src/domains/auth/token";
+import { pdfRenderer } from "../../src/platform/pdf/render-pdf-pages";
 import { createPdfFixture } from "../support/pdf-fixture";
 import { createTestD1 } from "../support/test-d1";
 
@@ -167,7 +168,10 @@ const createEnv = (
   RETRIEVAL_MODEL: "@cf/google/gemma-4-26b-a4b-it",
   AUTH_TOKEN_SECRET: authSecret,
   DB: db,
-  AI: overrides?.AI
+  AI: overrides?.AI,
+  BROWSER: {
+    fetch: fetch
+  }
 });
 
 const createAccessToken = async (studentId: string, institutionId = "inst_strathmore") => {
@@ -193,6 +197,12 @@ const createExamPdfFile = async (name = "database-systems.pdf", pageColor: "whit
   });
 
 describe("upload prefill route", () => {
+  const originalRenderPdfPages = pdfRenderer.renderPdfPages;
+
+  afterEach(() => {
+    pdfRenderer.renderPdfPages = originalRenderPdfPages;
+  });
+
   it("returns file details for a valid uploaded pdf", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution({
@@ -205,6 +215,13 @@ describe("upload prefill route", () => {
     const accessToken = await createAccessToken(student.id);
     const formData = new FormData();
     let capturedPayload: unknown;
+
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
 
     formData.set("file", await createExamPdfFile());
 
@@ -242,9 +259,13 @@ describe("upload prefill route", () => {
           content: [
             { type: "text" },
             {
-              type: "file",
-              file: {
-                filename: "database-systems.pdf"
+              type: "text",
+              text: "PDF page 1"
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
               }
             }
           ]
@@ -271,6 +292,108 @@ describe("upload prefill route", () => {
     });
     expect(body.documentFingerprint).toBe("inst_strathmore|bit2205|cat|2026-05-11|unknown");
   }, 15000);
+
+  it("accepts guided json returned directly as an object", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+      uploadReviewPrompt: institutionPrompt
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
+
+    formData.set("file", await createExamPdfFile("guided-object.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: createAiBinding({
+          response: createReviewResponse()
+        })
+      })
+    );
+    const body = (await response.json()) as UploadPrefillResponse;
+
+    testDb.close();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.file.name).toBe("guided-object.pdf");
+    expect(body.modelReview.label).toBe("accept");
+    expect(body.extracted.unitCode).toBe("BIT 2205");
+  });
+
+  it("accepts openai-style choices response output", async () => {
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+      uploadReviewPrompt: institutionPrompt
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
+
+    formData.set("file", await createExamPdfFile("choices-response.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: createAiBinding({
+          response: {
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify(createReviewResponse())
+                }
+              }
+            ]
+          }
+        })
+      })
+    );
+    const body = (await response.json()) as UploadPrefillResponse;
+
+    testDb.close();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.file.name).toBe("choices-response.pdf");
+    expect(body.modelReview.label).toBe("accept");
+    expect(body.documentFingerprint).toBe("inst_strathmore|bit2205|cat|2026-05-11|unknown");
+  });
 
   it("rejects requests without a pdf file", async () => {
     const testDb = createTestD1();
@@ -305,6 +428,12 @@ describe("upload prefill route", () => {
   });
 
   it("rejects an exact duplicate against approved papers by file hash", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt
@@ -349,6 +478,12 @@ describe("upload prefill route", () => {
   }, 15000);
 
   it("does not reject because the same file is already in upload submissions", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt
@@ -436,6 +571,12 @@ describe("upload prefill route", () => {
   }, 15000);
 
   it("rejects uploads when the model rejects the document", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt
@@ -470,7 +611,7 @@ describe("upload prefill route", () => {
               decision: {
                 status: "reject",
                 message:
-                  "This PDF does not appear to be a valid Strathmore assessment document. Please upload a correct Strathmore CAT or exam paper."
+                  "The document is a personal CV/Resume and does not constitute an academic assessment document."
               }
             })
           )
@@ -484,11 +625,74 @@ describe("upload prefill route", () => {
     expect(response.status).toBe(422);
     expect(body.success).toBe(false);
     expect(body.message).toBe(
-      "This PDF does not appear to be a valid Strathmore assessment document. Please upload a correct Strathmore CAT or exam paper."
+      "The document is a personal CV/Resume and does not constitute a Strathmore University academic assessment document."
+    );
+  }, 15000);
+
+  it("rejects academic papers from the wrong institution with an institution-specific message", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+      uploadReviewPrompt: institutionPrompt
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+
+    formData.set("file", await createExamPdfFile("wrong-institution.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: createAiBinding({
+          response: JSON.stringify(
+            createReviewResponse({
+              institution: {
+                detected: "Harvard University",
+                matches_expected: false
+              },
+              decision: {
+                status: "reject",
+                message: "This appears to be an academic assessment document, but it belongs to another university."
+              }
+            })
+          )
+        })
+      })
+    );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(response.status).toBe(422);
+    expect(body.success).toBe(false);
+    expect(body.message).toBe(
+      "This appears to be an academic assessment document, but it does not appear to belong to Strathmore University. Please upload a valid Strathmore University assessment paper."
     );
   }, 15000);
 
   it("rejects uploads that are not cat or exam papers", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt
@@ -539,6 +743,12 @@ describe("upload prefill route", () => {
   }, 15000);
 
   it("returns review when required fingerprint fields are missing", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt
@@ -598,6 +808,12 @@ describe("upload prefill route", () => {
   }, 15000);
 
   it("rejects duplicate content against approved papers by fingerprint", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt
@@ -640,6 +856,12 @@ describe("upload prefill route", () => {
   }, 15000);
 
   it("fails cleanly when the model returns invalid json", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     testDb.seedInstitution({
       uploadReviewPrompt: institutionPrompt

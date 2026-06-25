@@ -1,5 +1,7 @@
 import type { EnvBindings } from "../../lib/app-env";
 import { AppError } from "../../lib/errors";
+import { logger } from "../observability";
+import { pdfRenderer } from "../pdf/render-pdf-pages";
 import { getUploadReviewModel } from "./config";
 
 const PAPER_BANK_UPLOAD_REVIEW_SYSTEM_INSTRUCTION = `
@@ -235,6 +237,67 @@ export type UploadReviewResult = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const hasUploadReviewSections = (value: unknown): value is Record<string, unknown> => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    "institution" in value &&
+    "document" in value &&
+    "metadata" in value &&
+    "signals" in value &&
+    "evidence" in value &&
+    "decision" in value
+  );
+};
+
+const readChoiceMessageContent = (choices: unknown): string | null => {
+  if (!Array.isArray(choices) || choices.length === 0) {
+    return null;
+  }
+
+  const firstChoice = choices[0];
+
+  if (!isRecord(firstChoice) || !isRecord(firstChoice.message)) {
+    return null;
+  }
+
+  if (hasUploadReviewSections(firstChoice.message.parsed)) {
+    return JSON.stringify(firstChoice.message.parsed);
+  }
+
+  const content = firstChoice.message.content;
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const textParts = content
+    .map((item) => {
+      if (!isRecord(item)) {
+        return "";
+      }
+
+      if (typeof item.text === "string") {
+        return item.text;
+      }
+
+      return "";
+    })
+    .filter(Boolean);
+
+  if (textParts.length === 0) {
+    return null;
+  }
+
+  return textParts.join("\n");
+};
+
 const expectRecord = (value: unknown, label: string) => {
   if (!isRecord(value)) {
     throw new AppError(`Upload review model returned an invalid ${label} object.`, 502);
@@ -327,15 +390,99 @@ const readModelResponseText = (raw: unknown) => {
     return raw;
   }
 
+  if (isRecord(raw)) {
+    const topLevelChoicesText = readChoiceMessageContent(raw.choices);
+
+    if (topLevelChoicesText) {
+      return topLevelChoicesText;
+    }
+  }
+
   if (isRecord(raw) && typeof raw.response === "string") {
     return raw.response;
+  }
+
+  if (isRecord(raw) && isRecord(raw.result)) {
+    if (typeof raw.result.response === "string") {
+      return raw.result.response;
+    }
+
+    const nestedChoicesText = readChoiceMessageContent(raw.result.choices);
+
+    if (nestedChoicesText) {
+      return nestedChoicesText;
+    }
   }
 
   throw new AppError("Upload review model did not return text output.", 502);
 };
 
-const validateUploadReviewResult = (raw: unknown): UploadReviewResult => {
-  const parsed = JSON.parse(extractJsonText(readModelResponseText(raw)));
+const readModelResponseObject = (raw: unknown) => {
+  if (hasUploadReviewSections(raw)) {
+    return raw;
+  }
+
+  if (isRecord(raw) && hasUploadReviewSections(raw.response)) {
+    return raw.response;
+  }
+
+  if (isRecord(raw) && hasUploadReviewSections(raw.result)) {
+    return raw.result;
+  }
+
+  if (isRecord(raw) && isRecord(raw.response) && hasUploadReviewSections(raw.response.response)) {
+    return raw.response.response;
+  }
+
+  if (isRecord(raw) && Array.isArray(raw.choices) && raw.choices.length > 0) {
+    const firstChoice = raw.choices[0];
+
+    if (isRecord(firstChoice) && isRecord(firstChoice.message)) {
+      if (hasUploadReviewSections(firstChoice.message.parsed)) {
+        return firstChoice.message.parsed;
+      }
+    }
+  }
+
+  if (isRecord(raw) && isRecord(raw.result) && Array.isArray(raw.result.choices)) {
+    const firstChoice = raw.result.choices[0];
+
+    if (isRecord(firstChoice) && isRecord(firstChoice.message)) {
+      if (hasUploadReviewSections(firstChoice.message.parsed)) {
+        return firstChoice.message.parsed;
+      }
+    }
+  }
+
+  return null;
+};
+
+const describeModelResponseShape = (raw: unknown) => {
+  if (typeof raw === "string") {
+    return {
+      rawType: "string"
+    };
+  }
+
+  if (!isRecord(raw)) {
+    return {
+      rawType: typeof raw
+    };
+  }
+
+  return {
+    rawType: "object",
+    topLevelKeys: Object.keys(raw).slice(0, 20),
+    responseType: typeof raw.response,
+    responseKeys: isRecord(raw.response) ? Object.keys(raw.response).slice(0, 20) : undefined,
+    resultType: typeof raw.result,
+    resultKeys: isRecord(raw.result) ? Object.keys(raw.result).slice(0, 20) : undefined
+  };
+};
+
+const parseUploadReviewResult = (raw: unknown): UploadReviewResult => {
+  const directObject = readModelResponseObject(raw);
+  const parsed = directObject ?? JSON.parse(extractJsonText(readModelResponseText(raw)));
   const root = expectRecord(parsed, "root");
   const institution = expectRecord(root.institution, "institution");
   const document = expectRecord(root.document, "document");
@@ -420,18 +567,6 @@ const validateUploadReviewResult = (raw: unknown): UploadReviewResult => {
   };
 };
 
-const encodeFileData = async (file: File) => {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    const chunk = bytes.subarray(index, index + 0x8000);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-};
-
 export const reviewUploadDocument = async (
   env: EnvBindings,
   request: UploadReviewRequest
@@ -442,8 +577,31 @@ export const reviewUploadDocument = async (
     throw new AppError("Workers AI binding is not configured.", 500);
   }
 
+  if (!env.BROWSER) {
+    throw new AppError("Browser rendering binding is not configured.", 500);
+  }
+
   const model = getUploadReviewModel(env);
-  const fileData = await encodeFileData(request.file);
+  const renderedPages = await pdfRenderer.renderPdfPages(env.BROWSER, request.file);
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: `Institution upload review standard:\n${request.institutionPrompt}\n\nReview all attached PDF page images from the same document and return the required JSON only.`
+    }
+  ];
+
+  for (const renderedPage of renderedPages) {
+    content.push({
+      type: "text",
+      text: `PDF page ${renderedPage.pageNumber}`
+    });
+    content.push({
+      type: "image_url",
+      image_url: {
+        url: `data:image/png;base64,${renderedPage.imageBase64}`
+      }
+    });
+  }
 
   const raw = await ai.run(model, {
     messages: [
@@ -453,24 +611,14 @@ export const reviewUploadDocument = async (
       },
       {
         role: "user",
-        content: [
-          {
-            type: "text",
-            text: `Institution upload review standard:\n${request.institutionPrompt}\n\nReview the attached PDF document and return the required JSON only.`
-          },
-          {
-            type: "file",
-            file: {
-              file_data: fileData,
-              filename: request.file.name
-            }
-          }
-        ]
+        content
       }
     ],
     guided_json: UPLOAD_REVIEW_JSON_SCHEMA,
     temperature: 0
   });
 
-  return validateUploadReviewResult(raw);
+  logger.info("upload review model raw response shape", describeModelResponseShape(raw));
+
+  return parseUploadReviewResult(raw);
 };
