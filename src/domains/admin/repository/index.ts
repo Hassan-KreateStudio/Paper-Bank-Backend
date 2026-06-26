@@ -1,5 +1,6 @@
 export { adminInstitutionsRepository } from "./institutions.repository";
 export { adminUsersRepository } from "./users.repository";
+export { adminStaffUsersRepository } from "./staff-users.repository";
 export { adminReviewRepository } from "./review.repository";
 export { adminPapersRepository } from "./papers.repository";
 export { adminWaitlistRepository } from "./waitlist.repository";

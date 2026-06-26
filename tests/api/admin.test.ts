@@ -29,6 +29,8 @@ const extractInviteEmailDetails = (text: string) => {
   };
 };
 
+const playfulUsernamePattern = /^(brave|bright|calm|clever|mint|paper|quiet|sharp|sunny|swift)-(atlas|beam|fox|ink|lion|otter|quill|river|spark|trail)-\d{2}$/;
+
 const createStudentAccessToken = async (
   studentId: string,
   institutionId = "inst_strathmore",
@@ -402,6 +404,7 @@ describe("admin routes", () => {
       expect(inviteBody.success).toBe(true);
       expect(inviteBody.invitation.email).toBe("new.reviewer@paperbank.online");
       expect(inviteBody.invitation.role).toBe("reviewer");
+      expect(inviteBody.invitation.username).toMatch(playfulUsernamePattern);
 
       if (!emailText) {
         throw new Error("The reviewer invite email was not captured.");
@@ -480,6 +483,112 @@ describe("admin routes", () => {
       testDb.close();
     }
   }, 20000);
+
+  it("lets an admin list, deactivate, and delete reviewer staff users", async () => {
+    const testDb = createTestD1();
+    const bucket = createMockR2Bucket() as unknown as R2Bucket;
+    const env = createEnv(testDb.db, bucket);
+    testDb.seedInstitution();
+
+    const admin = await testDb.seedStaffUser({
+      institutionId: null,
+      email: "admin@paperbank.online",
+      username: "global-admin",
+      role: "admin",
+      status: "active"
+    });
+    const reviewer = await testDb.seedStaffUser({
+      institutionId: "inst_strathmore",
+      email: "reviewer-one@paperbank.online",
+      username: "mint-otter-24",
+      password: "reviewer-password-123",
+      role: "reviewer",
+      status: "active"
+    });
+
+    const adminAccessToken = await createStaffAccessToken(admin.id, null, "admin");
+
+    const listResponse = await app.request(
+      "/api/admin/staff-users",
+      {
+        headers: {
+          authorization: `Bearer ${adminAccessToken}`
+        }
+      },
+      env
+    );
+    const listBody = (await listResponse.json()) as {
+      items: Array<{ id: string; username: string; role: string; institutionName: string | null }>;
+    };
+
+    expect(listResponse.status).toBe(200);
+    expect(listBody.items.some((item) => item.id === reviewer.id && item.username === "mint-otter-24")).toBe(
+      true
+    );
+    expect(listBody.items.some((item) => item.id === reviewer.id && item.institutionName === "Strathmore University")).toBe(true);
+
+    const deactivateResponse = await app.request(
+      `/api/admin/staff-users/${reviewer.id}/deactivate`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${adminAccessToken}`
+        }
+      },
+      env
+    );
+    const deactivateBody = (await deactivateResponse.json()) as {
+      success: boolean;
+      staffUser: { id: string; status: string };
+    };
+
+    expect(deactivateResponse.status).toBe(200);
+    expect(deactivateBody.success).toBe(true);
+    expect(deactivateBody.staffUser.id).toBe(reviewer.id);
+    expect(deactivateBody.staffUser.status).toBe("inactive");
+    expect(testDb.getStaffUser(reviewer.id)?.status).toBe("inactive");
+
+    const deactivatedLoginResponse = await app.request(
+      "/api/staff-auth/login",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          username: "mint-otter-24",
+          password: "reviewer-password-123"
+        })
+      },
+      env
+    );
+    const deactivatedLoginBody = (await deactivatedLoginResponse.json()) as {
+      success: boolean;
+      message: string;
+    };
+
+    expect(deactivatedLoginResponse.status).toBe(401);
+    expect(deactivatedLoginBody.success).toBe(false);
+    expect(deactivatedLoginBody.message).toBe("The staff account is not active.");
+
+    const deleteResponse = await app.request(
+      `/api/admin/staff-users/${reviewer.id}`,
+      {
+        method: "DELETE",
+        headers: {
+          authorization: `Bearer ${adminAccessToken}`
+        }
+      },
+      env
+    );
+    const deleteBody = (await deleteResponse.json()) as { success: boolean };
+
+    expect(deleteResponse.status).toBe(200);
+    expect(deleteBody.success).toBe(true);
+    expect(testDb.getStaffUser(reviewer.id)).toBeNull();
+
+    testDb.close();
+  });
 
   it("lets an admin inspect review assets and exposes explicit placeholders for unfinished controls", async () => {
     const testDb = createTestD1();

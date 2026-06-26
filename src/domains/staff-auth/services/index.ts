@@ -5,6 +5,7 @@ import { hashStaffPassword } from "../password";
 import { staffAuthRepository } from "../repository";
 import { verifyStaffPassword } from "../password";
 import { createStaffAuthToken } from "../token";
+import { generatePlayfulReviewerUsername } from "../username";
 
 const STAFF_INVITE_TTL_DAYS = 7;
 const PENDING_STAFF_PASSWORD_HASH = "pending_invite";
@@ -19,27 +20,9 @@ const createInviteExpiry = () => {
   return expiresAt.toISOString();
 };
 
-const usernameBaseFromEmail = (email: string) => {
-  const localPart = normalizeEmail(email).split("@")[0] ?? "reviewer";
-  const normalized = localPart
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 18);
-
-  return normalized || "reviewer";
-};
-
-const buildAvailableUsername = async (db: D1Database, email: string) => {
-  const base = usernameBaseFromEmail(email);
-  const candidates = [
-    `${base}-review`,
-    `review-${base}`,
-    `${base}-${crypto.randomUUID().slice(0, 6)}`,
-    `review-${crypto.randomUUID().slice(0, 6)}`
-  ];
-
-  for (const candidate of candidates) {
+const buildAvailableUsername = async (db: D1Database) => {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = generatePlayfulReviewerUsername();
     const existingUser = await staffAuthRepository.findByUsername(db, candidate);
 
     if (!existingUser) {
@@ -208,7 +191,7 @@ export const staffAuthService = {
       throw new AppError("A staff account with this email already exists.", 409);
     }
 
-    const username = await buildAvailableUsername(db, normalizedEmail);
+    const username = await buildAvailableUsername(db);
     const inviteToken = generateStaffInviteToken();
     const inviteId = crypto.randomUUID();
     const staffUserId = crypto.randomUUID();

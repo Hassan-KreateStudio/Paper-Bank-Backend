@@ -3,12 +3,14 @@ import { AppError, NotFoundError } from "../../../lib/errors";
 import type { StudentRole } from "../../students/contracts";
 import { institutionsRepository } from "../../institutions/repository";
 import { reviewService } from "../../review/services";
+import { staffAuthRepository } from "../../staff-auth/repository";
 import { staffAuthService } from "../../staff-auth/services";
 import {
   adminAnalyticsRepository,
   adminInstitutionsRepository,
   adminPapersRepository,
   adminReviewRepository,
+  adminStaffUsersRepository,
   adminUsersRepository,
   adminWaitlistRepository
 } from "../repository";
@@ -21,6 +23,70 @@ export const adminService = {
   },
   listUsers: async (db: D1Database) => {
     return await adminUsersRepository.list(db);
+  },
+  listStaffUsers: async (db: D1Database) => {
+    return await adminStaffUsersRepository.list(db);
+  },
+  deactivateStaffUser: async (
+    db: D1Database,
+    input: {
+      staffUserId: string;
+      actorStaffUserId: string;
+    }
+  ) => {
+    const existingUser = await adminStaffUsersRepository.findById(db, input.staffUserId);
+
+    if (!existingUser) {
+      throw new NotFoundError("Staff user was not found.");
+    }
+
+    if (existingUser.role !== "reviewer") {
+      throw new AppError("Only reviewer accounts can be deactivated.", 400);
+    }
+
+    if (existingUser.id === input.actorStaffUserId) {
+      throw new AppError("You cannot deactivate your own staff account.", 400);
+    }
+
+    const updatedUser = await adminStaffUsersRepository.deactivate(db, existingUser.id);
+
+    if (!updatedUser) {
+      throw new AppError("Failed to deactivate staff user.", 500);
+    }
+
+    return updatedUser;
+  },
+  deleteStaffUser: async (
+    db: D1Database,
+    input: {
+      staffUserId: string;
+      actorStaffUserId: string;
+    }
+  ) => {
+    const existingUser = await adminStaffUsersRepository.findById(db, input.staffUserId);
+
+    if (!existingUser) {
+      throw new NotFoundError("Staff user was not found.");
+    }
+
+    if (existingUser.role !== "reviewer") {
+      throw new AppError("Only reviewer accounts can be deleted.", 400);
+    }
+
+    if (existingUser.id === input.actorStaffUserId) {
+      throw new AppError("You cannot delete your own staff account.", 400);
+    }
+
+    const invites = await adminStaffUsersRepository.listInvitesForUser(db, {
+      institutionId: existingUser.institutionId,
+      email: existingUser.email
+    });
+
+    for (const invite of invites) {
+      await staffAuthRepository.deleteInvite(db, invite.id);
+    }
+
+    await adminStaffUsersRepository.delete(db, existingUser.id);
   },
   updateUserRole: async (db: D1Database, studentId: string, role: string) => {
     if (!allowedAdminRoles.includes(role as StudentRole)) {

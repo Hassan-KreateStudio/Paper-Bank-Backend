@@ -30,6 +30,51 @@ adminRoutes.get("/users", async (c) => {
   });
 });
 
+adminRoutes.get("/staff-users", async (c) => {
+  const db = requireDb(c.env);
+  const items = await adminService.listStaffUsers(db);
+
+  return c.json({
+    domain: "admin",
+    items
+  });
+});
+
+adminRoutes.post("/staff-users/:staffUserId/deactivate", async (c) => {
+  const db = requireDb(c.env);
+  const actorStaffUserId = c.get("staffUserId");
+
+  if (!actorStaffUserId) {
+    throw new UnauthorizedError("Authentication is required.");
+  }
+
+  return c.json({
+    success: true,
+    staffUser: await adminService.deactivateStaffUser(db, {
+      staffUserId: c.req.param("staffUserId"),
+      actorStaffUserId
+    })
+  });
+});
+
+adminRoutes.delete("/staff-users/:staffUserId", async (c) => {
+  const db = requireDb(c.env);
+  const actorStaffUserId = c.get("staffUserId");
+
+  if (!actorStaffUserId) {
+    throw new UnauthorizedError("Authentication is required.");
+  }
+
+  await adminService.deleteStaffUser(db, {
+    staffUserId: c.req.param("staffUserId"),
+    actorStaffUserId
+  });
+
+  return c.json({
+    success: true
+  });
+});
+
 adminRoutes.patch("/users/:studentId/role", async (c) => {
   throw new AppError("Admin staff promotion is not implemented yet.", 501, {
     clientMessage: "Admin staff promotion is not implemented yet."

@@ -23,6 +23,19 @@ export type AdminUserItem = {
   emailVerifiedAt: string | null;
 };
 
+export type AdminStaffUserItem = {
+  id: string;
+  institutionId: string | null;
+  institutionName: string | null;
+  institutionSlug: string | null;
+  email: string;
+  username: string;
+  role: "reviewer" | "admin";
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminReviewQueueItem = {
   id: string;
   institutionId: string;
