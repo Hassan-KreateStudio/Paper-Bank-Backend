@@ -1,10 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import app from "../../src";
 import { createAuthToken } from "../../src/domains/auth/token";
 import { createStaffAuthToken } from "../../src/domains/staff-auth/token";
 import { createPdfFixture } from "../support/pdf-fixture";
 import { createMockR2Bucket } from "../support/mock-r2";
 import { createTestD1 } from "../support/test-d1";
+import { pdfRenderer } from "../../src/platform/pdf/render-pdf-pages";
 
 const authSecret = "super-secret-auth-token";
 const staffAuthSecret = "super-secret-staff-auth-token";
@@ -58,7 +59,22 @@ const createEnv = (db: D1Database, bucket: R2Bucket) => ({
   STAFF_AUTH_TOKEN_SECRET: staffAuthSecret,
   ...resendEnv,
   DB: db,
-  PAPERS_BUCKET: bucket
+  PAPERS_BUCKET: bucket,
+  AI: {
+    run: async (_model: string, payload: unknown) => {
+      if (typeof payload === "object" && payload !== null && "messages" in payload) {
+        return `Strathmore University
+Unit Code: BBT 4106
+Unit Name: Business Intelligence I
+Continuous Assessment Test (CAT) 1`;
+      }
+
+      return {};
+    }
+  },
+  BROWSER: {
+    fetch: fetch
+  }
 });
 
 const createStoredPdfFile = async () =>
@@ -74,6 +90,12 @@ const createStoredPdfFile = async () =>
   });
 
 describe("admin routes", () => {
+  const originalRenderPdfPages = pdfRenderer.renderPdfPages;
+
+  afterEach(() => {
+    pdfRenderer.renderPdfPages = originalRenderPdfPages;
+  });
+
   it("blocks a non-admin from the admin control surface", async () => {
     const testDb = createTestD1();
     const bucket = createMockR2Bucket() as unknown as R2Bucket;
@@ -105,6 +127,12 @@ describe("admin routes", () => {
   });
 
   it("lets an admin operate the cross-institution control surface", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     const bucket = createMockR2Bucket() as unknown as R2Bucket;
     const env = createEnv(testDb.db, bucket);

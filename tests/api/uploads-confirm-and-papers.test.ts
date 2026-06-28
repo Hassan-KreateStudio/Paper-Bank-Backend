@@ -1,11 +1,14 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import app from "../../src";
 import { createAuthToken } from "../../src/domains/auth/token";
+import { createStaffAuthToken } from "../../src/domains/staff-auth/token";
 import { createPdfFixture } from "../support/pdf-fixture";
 import { createMockR2Bucket } from "../support/mock-r2";
 import { createTestD1 } from "../support/test-d1";
+import { pdfRenderer } from "../../src/platform/pdf/render-pdf-pages";
 
 const authSecret = "super-secret-auth-token";
+const staffAuthSecret = "super-secret-staff-auth-token";
 
 const createAccessToken = async (
   studentId: string,
@@ -16,14 +19,46 @@ const createAccessToken = async (
   return token.token;
 };
 
+const createStaffAccessToken = async (
+  staffUserId: string,
+  institutionId: string | null,
+  role: "reviewer" | "admin"
+) => {
+  const token = await createStaffAuthToken(staffUserId, institutionId, role, staffAuthSecret);
+  return token.token;
+};
+
 const createEnv = (db: D1Database, bucket: R2Bucket) => ({
   APP_ENV: "test",
   UPLOAD_REVIEW_MODEL: "@cf/google/gemma-4-26b-a4b-it",
   EMBEDDING_MODEL: "@cf/baai/bge-base-en-v1.5",
   RETRIEVAL_MODEL: "@cf/google/gemma-4-26b-a4b-it",
   AUTH_TOKEN_SECRET: authSecret,
+  STAFF_AUTH_TOKEN_SECRET: staffAuthSecret,
   DB: db,
-  PAPERS_BUCKET: bucket
+  PAPERS_BUCKET: bucket,
+  AI: {
+    run: async (_model: string, payload: unknown) => {
+      if (typeof payload === "object" && payload !== null && "messages" in payload) {
+        return `Strathmore University
+School of Computing and Engineering Sciences
+Unit Code: BIT 2205
+Unit Name: Database Systems
+Paper Type: End Semester Exam
+Academic Year: 2023/2024
+Date: 11th May 2026
+Time: 1 Hour
+Normalization, indexing, and joins.
+Transactions, concurrency, and query optimization.
+This paper studies diabetes screening, glucose risk prediction, and patient outcomes.`;
+      }
+
+      return {};
+    }
+  },
+  BROWSER: {
+    fetch: fetch
+  }
 });
 
 const createExamPdfFile = async (name = "database-systems.pdf") =>
@@ -59,7 +94,19 @@ const createCustomPdfFile = async (
   });
 
 describe("upload confirm and paper retrieval flow", () => {
+  const originalRenderPdfPages = pdfRenderer.renderPdfPages;
+
+  afterEach(() => {
+    pdfRenderer.renderPdfPages = originalRenderPdfPages;
+  });
+
   it("stores the original pdf, creates a submission, approves it, and serves the same file back", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     const bucket = createMockR2Bucket() as unknown as R2Bucket;
     const env = createEnv(testDb.db, bucket);
@@ -69,16 +116,19 @@ describe("upload confirm and paper retrieval flow", () => {
       status: "active",
       emailVerifiedAt: new Date().toISOString()
     });
-    const reviewer = testDb.seedStudent({
-      admissionNumber: "SCT221-0099/2022",
-      email: "reviewer@strathmore.edu",
-      fullName: "Reviewer User",
+    const reviewer = await testDb.seedStaffUser({
+      institutionId: "inst_strathmore",
+      email: "reviewer@paperbank.online",
+      username: "reviewer-alpha",
       role: "reviewer",
-      status: "active",
-      emailVerifiedAt: new Date().toISOString()
+      status: "active"
     });
     const accessToken = await createAccessToken(student.id);
-    const reviewerAccessToken = await createAccessToken(reviewer.id, "inst_strathmore", "reviewer");
+    const reviewerAccessToken = await createStaffAccessToken(
+      reviewer.id,
+      "inst_strathmore",
+      "reviewer"
+    );
     const file = await createExamPdfFile();
     const originalBytes = await file.arrayBuffer();
     const formData = new FormData();
@@ -211,7 +261,7 @@ describe("upload confirm and paper retrieval flow", () => {
       "/api/papers?query=bit%202205",
       {
         headers: {
-          authorization: `Bearer ${reviewerAccessToken}`
+          authorization: `Bearer ${accessToken}`
         }
       },
       env
@@ -230,7 +280,7 @@ describe("upload confirm and paper retrieval flow", () => {
       `/api/papers/${approveBody.paper.id}`,
       {
         headers: {
-          authorization: `Bearer ${reviewerAccessToken}`
+          authorization: `Bearer ${accessToken}`
         }
       },
       env
@@ -252,7 +302,7 @@ describe("upload confirm and paper retrieval flow", () => {
       `/api/papers/${approveBody.paper.id}/file`,
       {
         headers: {
-          authorization: `Bearer ${reviewerAccessToken}`
+          authorization: `Bearer ${accessToken}`
         }
       },
       env
@@ -266,7 +316,7 @@ describe("upload confirm and paper retrieval flow", () => {
     testDb.close();
   }, 20000);
 
-  it("blocks a normal student from accessing the review queue", async () => {
+  it("blocks a normal student token from accessing the review queue", async () => {
     const testDb = createTestD1();
     const bucket = createMockR2Bucket() as unknown as R2Bucket;
     const env = createEnv(testDb.db, bucket);
@@ -293,7 +343,7 @@ describe("upload confirm and paper retrieval flow", () => {
 
     expect(response.status).toBe(401);
     expect(body.success).toBe(false);
-    expect(body.message).toBe("Reviewer access is required.");
+    expect(body.message).toBe("The staff auth token is invalid.");
   });
 
   it("allows an admin to see review submissions across institutions", async () => {
@@ -309,13 +359,12 @@ describe("upload confirm and paper retrieval flow", () => {
       shortCode: "OU",
       emailDomain: "other.edu"
     });
-    const admin = testDb.seedStudent({
-      admissionNumber: "SCT221-0009/2022",
-      email: "admin@strathmore.edu",
-      fullName: "Global Admin",
+    const admin = await testDb.seedStaffUser({
+      institutionId: null,
+      email: "admin@paperbank.online",
+      username: "admin-alpha",
       role: "admin",
-      status: "active",
-      emailVerifiedAt: new Date().toISOString()
+      status: "active"
     });
     const otherInstitutionStudent = testDb.seedStudent({
       institutionId: "inst_other",
@@ -328,7 +377,7 @@ describe("upload confirm and paper retrieval flow", () => {
 
     testDb.seedUploadSubmission({
       institutionId: "inst_strathmore",
-      studentId: admin.id,
+      studentId: otherInstitutionStudent.id,
       title: "Strathmore Queue Paper"
     });
     testDb.seedUploadSubmission({
@@ -337,7 +386,7 @@ describe("upload confirm and paper retrieval flow", () => {
       title: "Other Institution Queue Paper"
     });
 
-    const adminAccessToken = await createAccessToken(admin.id, "inst_strathmore", "admin");
+    const adminAccessToken = await createStaffAccessToken(admin.id, null, "admin");
 
     const response = await app.request(
       "/api/review/queue",
@@ -362,6 +411,12 @@ describe("upload confirm and paper retrieval flow", () => {
   });
 
   it("allows an admin to approve a submission from another institution", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     const bucket = createMockR2Bucket() as unknown as R2Bucket;
     const env = createEnv(testDb.db, bucket);
@@ -374,13 +429,12 @@ describe("upload confirm and paper retrieval flow", () => {
       shortCode: "OU",
       emailDomain: "other.edu"
     });
-    const admin = testDb.seedStudent({
-      admissionNumber: "SCT221-0010/2022",
-      email: "admin.approver@strathmore.edu",
-      fullName: "Approver Admin",
+    const admin = await testDb.seedStaffUser({
+      institutionId: null,
+      email: "admin.approver@paperbank.online",
+      username: "admin-approver",
       role: "admin",
-      status: "active",
-      emailVerifiedAt: new Date().toISOString()
+      status: "active"
     });
     const otherInstitutionStudent = testDb.seedStudent({
       institutionId: "inst_other",
@@ -419,7 +473,7 @@ describe("upload confirm and paper retrieval flow", () => {
       }
     );
 
-    const adminAccessToken = await createAccessToken(admin.id, "inst_strathmore", "admin");
+    const adminAccessToken = await createStaffAccessToken(admin.id, null, "admin");
 
     const response = await app.request(
       `/api/review/submissions/${otherInstitutionSubmission.id}/approve`,
@@ -510,6 +564,12 @@ describe("upload confirm and paper retrieval flow", () => {
   }, 20000);
 
   it("supports chat-style hybrid search across metadata and approved paper content", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
     const testDb = createTestD1();
     const bucket = createMockR2Bucket() as unknown as R2Bucket;
     const env = createEnv(testDb.db, bucket);
@@ -519,16 +579,19 @@ describe("upload confirm and paper retrieval flow", () => {
       status: "active",
       emailVerifiedAt: new Date().toISOString()
     });
-    const reviewer = testDb.seedStudent({
-      admissionNumber: "SCT221-0100/2022",
-      email: "search.reviewer@strathmore.edu",
-      fullName: "Search Reviewer",
+    const reviewer = await testDb.seedStaffUser({
+      institutionId: "inst_strathmore",
+      email: "search.reviewer@paperbank.online",
+      username: "reviewer-search",
       role: "reviewer",
-      status: "active",
-      emailVerifiedAt: new Date().toISOString()
+      status: "active"
     });
     const accessToken = await createAccessToken(student.id);
-    const reviewerAccessToken = await createAccessToken(reviewer.id, "inst_strathmore", "reviewer");
+    const reviewerAccessToken = await createStaffAccessToken(
+      reviewer.id,
+      "inst_strathmore",
+      "reviewer"
+    );
 
     const createConfirmedSubmission = async (file: File, fields: Record<string, string>) => {
       const formData = new FormData();

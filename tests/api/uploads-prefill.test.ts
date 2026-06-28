@@ -209,7 +209,6 @@ describe("upload prefill route", () => {
   it("returns file details for a valid uploaded pdf", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -298,7 +297,6 @@ describe("upload prefill route", () => {
   it("accepts guided json returned directly as an object", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -345,7 +343,6 @@ describe("upload prefill route", () => {
   it("accepts openai-style choices response output", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -438,7 +435,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -488,7 +484,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -581,7 +576,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -640,7 +634,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -697,7 +690,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -753,7 +745,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -817,7 +808,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",
@@ -865,7 +855,6 @@ describe("upload prefill route", () => {
     ];
     const testDb = createTestD1();
     testDb.seedInstitution({
-      uploadReviewPrompt: institutionPrompt
     });
     const student = testDb.seedStudent({
       status: "active",

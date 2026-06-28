@@ -7,7 +7,6 @@ export type AdminInstitutionItem = {
   shortCode: string;
   emailDomain: string;
   status: string;
-  uploadReviewPrompt: string | null;
 };
 
 export type AdminUserItem = {

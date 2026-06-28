@@ -3,6 +3,7 @@ import type { EnvBindings } from "../../../lib/app-env";
 import { reviewUploadDocument, type UploadReviewResult } from "../../../platform/ai/review";
 import { logger } from "../../../platform/observability";
 import { institutionsRepository } from "../../institutions/repository";
+import { getInstitutionUploadReviewPrompt } from "../../institutions/upload-review-prompt";
 import { papersRepository } from "../../papers/repository";
 import {
   normalizeDocumentFingerprint,
@@ -211,7 +212,7 @@ export const uploadsService = {
       throw new NotFoundError("Institution was not found.");
     }
 
-    const institutionPrompt = institution.uploadReviewPrompt?.trim();
+    const institutionPrompt = getInstitutionUploadReviewPrompt(institution);
 
     if (!institutionPrompt) {
       throw new AppError("Upload review prompt is not configured for this institution.", 500);

@@ -11,8 +11,7 @@ export const adminInstitutionsRepository = {
             slug,
             short_code AS shortCode,
             email_domain AS emailDomain,
-            status,
-            upload_review_prompt AS uploadReviewPrompt
+            status
           FROM institutions
           ORDER BY name ASC
         `

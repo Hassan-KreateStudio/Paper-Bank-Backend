@@ -4,6 +4,5 @@ export type Institution = {
   slug: string;
   shortCode: string;
   emailDomain: string;
-  uploadReviewPrompt: string | null;
   status: string;
 };

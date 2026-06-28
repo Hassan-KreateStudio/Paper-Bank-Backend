@@ -1,6 +1,7 @@
 import { PAPER_STATUS } from "../../../lib/constants/paper-status";
 import type { EnvBindings } from "../../../lib/app-env";
 import { AppError, NotFoundError } from "../../../lib/errors";
+import { extractApprovedPaperText } from "../../../platform/ai/paper-text";
 import { getPaperFile } from "../../../platform/storage";
 import type { Paper } from "../../papers/contracts";
 import { papersRepository } from "../../papers/repository";
@@ -9,25 +10,6 @@ import type { UploadRecord } from "../../uploads/contracts";
 import { uploadsRepository } from "../../uploads/repository";
 import { reviewRepository } from "../repository";
 import type { StaffRole } from "../../staff-auth/contracts";
-
-const decodePdfTextFragment = (fragment: string) => {
-  return fragment
-    .replace(/\\n/g, " ")
-    .replace(/\\r/g, " ")
-    .replace(/\\t/g, " ")
-    .replace(/\\\(/g, "(")
-    .replace(/\\\)/g, ")")
-    .replace(/\\\\/g, "\\");
-};
-
-const extractPdfTextFromBytes = (fileBytes: ArrayBuffer) => {
-  const fileText = new TextDecoder().decode(fileBytes);
-  const fragments = Array.from(fileText.matchAll(/\(([^()]*)\)/g), (match) =>
-    decodePdfTextFragment(match[1] ?? "")
-  );
-
-  return fragments.join(" ").replace(/\s+/g, " ").trim();
-};
 
 type ReviewScope = {
   institutionId: string | null;
@@ -135,8 +117,10 @@ export const reviewService = {
       throw new NotFoundError("Stored upload file was not found.");
     }
 
-    const fileBytes = await storedFile.arrayBuffer();
-    const extractedText = extractPdfTextFromBytes(fileBytes);
+    const approvedFile = new File([await storedFile.arrayBuffer()], submission.fileName, {
+      type: storedFile.httpMetadata?.contentType || "application/pdf"
+    });
+    const extractedText = await extractApprovedPaperText(env, approvedFile);
 
     const paper = await papersRepository.create(db, {
       id: crypto.randomUUID(),

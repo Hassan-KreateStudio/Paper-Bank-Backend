@@ -19,7 +19,8 @@ const migrationFiles = [
   "migrations/d1/0014_make_academic_year_optional.sql",
   "migrations/d1/0015_add_student_role.sql",
   "migrations/d1/0016_create_staff_users.sql",
-  "migrations/d1/0017_create_staff_invites.sql"
+  "migrations/d1/0017_create_staff_invites.sql",
+  "migrations/d1/0018_drop_upload_review_prompt_from_institutions.sql"
 ];
 
 class TestD1Statement {
@@ -74,7 +75,6 @@ export const createTestD1 = () => {
     slug: string;
     shortCode: string;
     emailDomain: string;
-    uploadReviewPrompt: string | null;
     status: string;
   }>) => {
     const now = new Date().toISOString();
@@ -84,7 +84,6 @@ export const createTestD1 = () => {
       slug: overrides?.slug ?? "strathmore",
       shortCode: overrides?.shortCode ?? "SU",
       emailDomain: overrides?.emailDomain ?? "strathmore.edu",
-      uploadReviewPrompt: overrides?.uploadReviewPrompt ?? null,
       status: overrides?.status ?? "active"
     };
 
@@ -97,12 +96,11 @@ export const createTestD1 = () => {
             slug,
             short_code,
             email_domain,
-            upload_review_prompt,
             status,
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         `
       )
       .run(
@@ -111,7 +109,6 @@ export const createTestD1 = () => {
         institution.slug,
         institution.shortCode,
         institution.emailDomain,
-        institution.uploadReviewPrompt,
         institution.status,
         now,
         now
