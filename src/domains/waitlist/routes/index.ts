@@ -1,20 +1,30 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../../../lib/app-env";
-import { requireText } from "../../../lib/validation";
+import { UnauthorizedError } from "../../../lib/errors";
+import { authMiddleware } from "../../../middleware";
+import { studentsRepository } from "../../students/repository";
 import { requireDb } from "../../../platform/db";
 import { waitlistService } from "../services";
 
 export const waitlistRoutes = new Hono<AppEnv>();
 
-waitlistRoutes.post("/", async (c) => {
-  const payload = (await c.req.json().catch(() => ({}))) as Record<string, string | undefined>;
-  const db = requireDb(c.env);
+waitlistRoutes.use("*", authMiddleware);
 
-  await waitlistService.join(db, {
-    institutionSlug: requireText(payload.institutionSlug, "institutionSlug"),
-    name: requireText(payload.name, "name"),
-    email: requireText(payload.email, "email")
-  });
+waitlistRoutes.post("/", async (c) => {
+  const db = requireDb(c.env);
+  const studentId = c.get("studentId");
+
+  if (!studentId) {
+    throw new UnauthorizedError("A valid bearer token is required.");
+  }
+
+  const student = await studentsRepository.findById(db, studentId);
+
+  if (!student) {
+    throw new UnauthorizedError("The auth token is invalid.");
+  }
+
+  await waitlistService.joinAuthenticatedStudent(db, student);
 
   return c.json({
     success: true,

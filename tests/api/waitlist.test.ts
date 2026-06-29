@@ -1,32 +1,46 @@
 import { describe, expect, it } from "bun:test";
 import app from "../../src";
+import { createAuthToken } from "../../src/domains/auth/token";
 import { createTestD1 } from "../support/test-d1";
+
+const authSecret = "waitlist-auth-secret";
 
 const createEnv = (db: D1Database) => ({
   APP_ENV: "test",
   UPLOAD_REVIEW_MODEL: "@cf/google/gemma-4-26b-a4b-it",
   EMBEDDING_MODEL: "@cf/baai/bge-base-en-v1.5",
   RETRIEVAL_MODEL: "@cf/google/gemma-4-26b-a4b-it",
+  AUTH_TOKEN_SECRET: authSecret,
   DB: db
 });
 
+const createAccessToken = async (
+  studentId: string,
+  institutionId = "inst_strathmore",
+  role: "student" | "reviewer" | "admin" = "student"
+) => {
+  const token = await createAuthToken(studentId, institutionId, role, authSecret);
+  return token.token;
+};
+
 describe("waitlist route", () => {
-  it("adds a strathmore email to the strathmore waitlist", async () => {
+  it("adds the authenticated student to the waitlist", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution();
+    const student = testDb.seedStudent({
+      email: "hassan.mutebi@strathmore.edu",
+      fullName: "Hassan Mutebi",
+      status: "active"
+    });
+    const accessToken = await createAccessToken(student.id);
 
     const response = await app.request(
       "/api/waitlist",
       {
         method: "POST",
         headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          institutionSlug: "strathmore",
-          name: "Hassan Mutebi",
-          email: "Hassan.Mutebi@strathmore.edu"
-        })
+          authorization: `Bearer ${accessToken}`
+        }
       },
       createEnv(testDb.db)
     );
@@ -39,22 +53,14 @@ describe("waitlist route", () => {
     expect(body.message).toBe("You have been added to the waitlist.");
   });
 
-  it("rejects a non-strathmore email for the strathmore waitlist", async () => {
+  it("rejects an unauthenticated waitlist join", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution();
 
     const response = await app.request(
       "/api/waitlist",
       {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          institutionSlug: "strathmore",
-          name: "Wrong Domain",
-          email: "wrong.domain@gmail.com"
-        })
+        method: "POST"
       },
       createEnv(testDb.db)
     );
@@ -64,26 +70,27 @@ describe("waitlist route", () => {
 
     expect(response.status).toBe(401);
     expect(body.success).toBe(false);
-    expect(body.message).toContain("domain is not allowed");
+    expect(body.message).toContain("bearer token");
   });
 
-  it("rejects the same waitlist email twice", async () => {
+  it("rejects the same authenticated student email twice", async () => {
     const testDb = createTestD1();
     testDb.seedInstitution();
+    const student = testDb.seedStudent({
+      email: "joined.once@strathmore.edu",
+      fullName: "Joined Once",
+      status: "active"
+    });
     const env = createEnv(testDb.db);
+    const accessToken = await createAccessToken(student.id);
 
     await app.request(
       "/api/waitlist",
       {
         method: "POST",
         headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          institutionSlug: "strathmore",
-          name: "First Join",
-          email: "joined.once@strathmore.edu"
-        })
+          authorization: `Bearer ${accessToken}`
+        }
       },
       env
     );
@@ -93,13 +100,8 @@ describe("waitlist route", () => {
       {
         method: "POST",
         headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          institutionSlug: "strathmore",
-          name: "Second Join",
-          email: "joined.once@strathmore.edu"
-        })
+          authorization: `Bearer ${accessToken}`
+        }
       },
       env
     );

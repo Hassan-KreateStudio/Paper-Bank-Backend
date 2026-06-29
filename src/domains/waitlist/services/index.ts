@@ -1,38 +1,16 @@
-import { AppError, NotFoundError, UnauthorizedError } from "../../../lib/errors";
-import { institutionsRepository } from "../../institutions/repository";
+import { AppError } from "../../../lib/errors";
 import { waitlistRepository } from "../repository";
-import type { CreateWaitlistEntryInput } from "../contracts";
+import type { Student } from "../../students/contracts";
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const normalizeName = (name: string) => name.trim();
 
-const getEmailDomain = (email: string) => {
-  const [, domain] = normalizeEmail(email).split("@");
-
-  if (!domain) {
-    throw new UnauthorizedError("A valid institutional email is required.");
-  }
-
-  return domain;
-};
-
 export const waitlistService = {
-  join: async (db: D1Database, input: CreateWaitlistEntryInput) => {
-    const institution = await institutionsRepository.findBySlug(db, input.institutionSlug);
-
-    if (!institution) {
-      throw new NotFoundError("Institution was not found.");
-    }
-
-    const normalizedEmail = normalizeEmail(input.email);
-
-    if (getEmailDomain(normalizedEmail) !== institution.emailDomain) {
-      throw new UnauthorizedError("The provided email domain is not allowed for this institution.");
-    }
-
+  joinAuthenticatedStudent: async (db: D1Database, student: Student) => {
+    const normalizedEmail = normalizeEmail(student.email);
     const existingEntry = await waitlistRepository.findByInstitutionAndEmail(
       db,
-      institution.id,
+      student.institutionId,
       normalizedEmail
     );
 
@@ -41,8 +19,8 @@ export const waitlistService = {
     }
 
     return waitlistRepository.create(db, {
-      institutionId: institution.id,
-      name: normalizeName(input.name),
+      institutionId: student.institutionId,
+      name: normalizeName(student.fullName),
       email: normalizedEmail
     });
   }
