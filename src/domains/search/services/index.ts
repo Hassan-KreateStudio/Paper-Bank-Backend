@@ -28,6 +28,8 @@ const parseSearchFilters = (query: string) => {
   };
 };
 
+type SearchFilters = ReturnType<typeof parseSearchFilters>;
+
 const normalizeVector = (vector: number[]) => {
   const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
 
@@ -60,8 +62,29 @@ const countOccurrences = (text: string, token: string) => {
   return text.split(token).length - 1;
 };
 
+const getAcademicYearSortValue = (academicYear: string | null) => {
+  if (!academicYear) {
+    return -1;
+  }
+
+  const rangeMatch = academicYear.match(/\b(20\d{2})\s*\/\s*(20\d{2})\b/);
+
+  if (rangeMatch) {
+    return Number(rangeMatch[2]);
+  }
+
+  const yearMatch = academicYear.match(/\b(20\d{2})\b/);
+
+  if (yearMatch) {
+    return Number(yearMatch[1]);
+  }
+
+  return -1;
+};
+
 const scoreMetadataMatch = (
   query: string,
+  filters: SearchFilters,
   candidate: {
     title: string;
     unitCode: string;
@@ -95,7 +118,39 @@ const scoreMetadataMatch = (
     score += 2;
   }
 
+  if (filters.unitCode && candidate.unitCode.toUpperCase() === filters.unitCode) {
+    score += 3.5;
+  }
+
+  if (filters.paperType && candidate.paperType === filters.paperType) {
+    score += 1.25;
+  }
+
+  if (filters.academicYear && candidate.academicYear === filters.academicYear) {
+    score += 1;
+  }
+
   return score;
+};
+
+const compareRankedResults = (
+  left: SearchResult,
+  right: SearchResult,
+  filters: SearchFilters
+) => {
+  if (filters.wantsLatest) {
+    const yearDelta = getAcademicYearSortValue(right.academicYear) - getAcademicYearSortValue(left.academicYear);
+
+    if (yearDelta !== 0) {
+      return yearDelta;
+    }
+  }
+
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+
+  return getAcademicYearSortValue(right.academicYear) - getAcademicYearSortValue(left.academicYear);
 };
 
 const createSnippet = (content: string, query: string) => {
@@ -216,7 +271,7 @@ export const searchService = {
     const rankedPapers = new Map<string, SearchResult>();
 
     for (const candidate of candidates) {
-      const metadataScore = scoreMetadataMatch(normalizedQuery, candidate);
+      const metadataScore = scoreMetadataMatch(normalizedQuery, filters, candidate);
       const semanticScore = cosineSimilarity(queryEmbedding.vector, JSON.parse(candidate.embeddingJson) as number[]);
       const combinedScore = metadataScore * 0.55 + semanticScore * 1.75;
       const existingResult = rankedPapers.get(candidate.paperId);
@@ -243,13 +298,7 @@ export const searchService = {
     }
 
     const results = Array.from(rankedPapers.values())
-      .sort((left, right) => {
-        if (filters.wantsLatest && left.academicYear !== right.academicYear) {
-          return (right.academicYear ?? "").localeCompare(left.academicYear ?? "");
-        }
-
-        return right.score - left.score;
-      })
+      .sort((left, right) => compareRankedResults(left, right, filters))
       .slice(0, 12);
 
     return {

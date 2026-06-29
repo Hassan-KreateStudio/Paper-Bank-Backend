@@ -135,7 +135,7 @@ export const reviewService = {
       fileKey: submission.fileKey,
       fileHash: submission.fileHash,
       documentFingerprint: submission.documentFingerprint,
-      extractedText
+      extractedText: null
     });
 
     if (!paper) {

@@ -290,6 +290,7 @@ describe("upload confirm and paper retrieval flow", () => {
       paper: {
         id: string;
         documentFingerprint: string | null;
+        extractedText: string | null;
       };
     };
 
@@ -297,6 +298,7 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(paperBody.paper.documentFingerprint).toBe(
       "inst_strathmore|bit2205|exam|2026-05-11|unknown"
     );
+    expect(paperBody.paper.extractedText).toBeNull();
 
     const fileResponse = await app.request(
       `/api/papers/${approveBody.paper.id}/file`,
@@ -732,6 +734,150 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(diabetesBody.results[0]?.title).toBe("Research Paper on Diabetes Screening");
     expect(diabetesBody.results[0]?.paperType).toBe("research");
     expect(diabetesBody.results[0]?.snippet.toLowerCase()).toContain("diabetes");
+
+    testDb.close();
+  }, 25000);
+
+  it("reranks exact unit code matches ahead of looser semantic matches", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
+    const testDb = createTestD1();
+    const bucket = createMockR2Bucket() as unknown as R2Bucket;
+    const env = createEnv(testDb.db, bucket);
+
+    testDb.seedInstitution();
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const reviewer = await testDb.seedStaffUser({
+      institutionId: "inst_strathmore",
+      email: "reviewer@paperbank.online",
+      username: "reviewer-bravo",
+      role: "reviewer",
+      status: "active"
+    });
+    const accessToken = await createAccessToken(student.id);
+    const reviewerAccessToken = await createStaffAccessToken(
+      reviewer.id,
+      "inst_strathmore",
+      "reviewer"
+    );
+
+    const createConfirmedSubmission = async (
+      file: File,
+      input: {
+        unitCode: string;
+        unitName: string;
+        paperType: string;
+        academicYear: string | null;
+        title: string;
+      }
+    ) => {
+      const formData = new FormData();
+      formData.set("file", file);
+      formData.set("unitCode", input.unitCode);
+      formData.set("unitName", input.unitName);
+      formData.set("paperType", input.paperType);
+      formData.set("title", input.title);
+
+      if (input.academicYear) {
+        formData.set("academicYear", input.academicYear);
+      }
+
+      const response = await app.request(
+        "/api/uploads/confirm",
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`
+          },
+          body: formData
+        },
+        env
+      );
+      const body = (await response.json()) as {
+        submission: {
+          id: string;
+        };
+      };
+
+      expect(response.status).toBe(200);
+
+      const approveResponse = await app.request(
+        `/api/review/submissions/${body.submission.id}/approve`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${reviewerAccessToken}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({})
+        },
+        env
+      );
+
+      expect(approveResponse.status).toBe(200);
+    };
+
+    await createConfirmedSubmission(await createCustomPdfFile("bit2206.pdf", [
+      { text: "Strathmore University", x: 297, y: 760, align: "center", fontSize: 15 },
+      { text: "Unit Code: BIT 2206", x: 297, y: 700, align: "center", fontSize: 14 },
+      { text: "Unit Name: Database Systems Advanced", x: 297, y: 672, align: "center", fontSize: 14 },
+      { text: "Paper Type: Exam", x: 297, y: 644, align: "center", fontSize: 14 },
+      { text: "Academic Year: 2024/2025", x: 297, y: 616, align: "center", fontSize: 12 },
+      { text: "Normalization and transactions in distributed databases.", x: 72, y: 540, align: "left", fontSize: 12 }
+    ]), {
+      unitCode: "BIT 2206",
+      unitName: "Database Systems Advanced",
+      paperType: "exam",
+      academicYear: "2024/2025",
+      title: "Database Systems Advanced Exam"
+    });
+
+    await createConfirmedSubmission(await createCustomPdfFile("bit2205.pdf", [
+      { text: "Strathmore University", x: 297, y: 760, align: "center", fontSize: 15 },
+      { text: "Unit Code: BIT 2205", x: 297, y: 700, align: "center", fontSize: 14 },
+      { text: "Unit Name: Database Systems", x: 297, y: 672, align: "center", fontSize: 14 },
+      { text: "Paper Type: Exam", x: 297, y: 644, align: "center", fontSize: 14 },
+      { text: "Academic Year: 2023/2024", x: 297, y: 616, align: "center", fontSize: 12 },
+      { text: "Normalization and transactions in distributed databases.", x: 72, y: 540, align: "left", fontSize: 12 }
+    ]), {
+      unitCode: "BIT 2205",
+      unitName: "Database Systems",
+      paperType: "exam",
+      academicYear: "2023/2024",
+      title: "Database Systems Exam"
+    });
+
+    const response = await app.request(
+      "/api/search",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          query: "BIT 2205 database systems exam"
+        })
+      },
+      env
+    );
+    const body = (await response.json()) as {
+      results: Array<{
+        title: string;
+        unitCode: string;
+      }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.results[0]?.unitCode).toBe("BIT 2205");
+    expect(body.results[0]?.title).toBe("Database Systems Exam");
 
     testDb.close();
   }, 25000);
