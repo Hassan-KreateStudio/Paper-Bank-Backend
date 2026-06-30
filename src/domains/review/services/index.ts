@@ -2,10 +2,14 @@ import { PAPER_STATUS } from "../../../lib/constants/paper-status";
 import type { EnvBindings } from "../../../lib/app-env";
 import { AppError, NotFoundError } from "../../../lib/errors";
 import { extractApprovedPaperText } from "../../../platform/ai/paper-text";
+import { emailPlatform } from "../../../platform/email";
+import { logger } from "../../../platform/observability";
 import { getPaperFile } from "../../../platform/storage";
+import { institutionsRepository } from "../../institutions/repository";
 import type { Paper } from "../../papers/contracts";
 import { papersRepository } from "../../papers/repository";
 import { searchService } from "../../search/services";
+import { studentsRepository } from "../../students/repository";
 import type { UploadRecord } from "../../uploads/contracts";
 import { uploadsRepository } from "../../uploads/repository";
 import { reviewRepository } from "../repository";
@@ -157,6 +161,38 @@ export const reviewService = {
       institutionId: paper.institutionId,
       extractedText
     });
+
+    const student = await studentsRepository.findById(db, submission.studentId);
+    const institution = await institutionsRepository.findById(db, submission.institutionId);
+
+    if (!student) {
+      throw new NotFoundError("Student was not found for this approved upload.");
+    }
+
+    if (!institution) {
+      throw new NotFoundError("Institution was not found for this approved upload.");
+    }
+
+    try {
+      await emailPlatform.sendUploadApproved(env, {
+        email: student.email,
+        fullName: student.fullName,
+        institutionName: institution.name,
+        title: submission.title,
+        unitCode: submission.unitCode,
+        unitName: submission.unitName,
+        paperType: submission.paperType
+      });
+    } catch (error) {
+      logger.error("Upload approval email failed", {
+        institutionId: submission.institutionId,
+        studentId: submission.studentId,
+        submissionId: submission.id,
+        paperId: paper.id,
+        email: student.email,
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
+    }
 
     return {
       submission: updatedSubmission ?? submission,

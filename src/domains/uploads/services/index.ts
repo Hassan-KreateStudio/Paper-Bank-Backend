@@ -1,10 +1,12 @@
 import { NotFoundError, AppError } from "../../../lib/errors";
 import type { EnvBindings } from "../../../lib/app-env";
 import { reviewUploadDocument, type UploadReviewResult } from "../../../platform/ai/review";
+import { emailPlatform } from "../../../platform/email";
 import { logger } from "../../../platform/observability";
 import { institutionsRepository } from "../../institutions/repository";
 import { getInstitutionUploadReviewPrompt } from "../../institutions/upload-review-prompt";
 import { papersRepository } from "../../papers/repository";
+import { studentsRepository } from "../../students/repository";
 import {
   normalizeDocumentFingerprint,
   type NormalizedAssessmentType
@@ -401,6 +403,37 @@ export const uploadsService = {
 
     if (!submission) {
       throw new AppError("Failed to create upload submission.", 500);
+    }
+
+    const student = await studentsRepository.findById(db, studentId);
+    const institution = await institutionsRepository.findById(db, institutionId);
+
+    if (!student) {
+      throw new NotFoundError("Student was not found for this upload.");
+    }
+
+    if (!institution) {
+      throw new NotFoundError("Institution was not found for this upload.");
+    }
+
+    try {
+      await emailPlatform.sendUploadSubmitted(env, {
+        email: student.email,
+        fullName: student.fullName,
+        institutionName: institution.name,
+        title: submission.title,
+        unitCode: submission.unitCode,
+        unitName: submission.unitName,
+        paperType: submission.paperType
+      });
+    } catch (error) {
+      logger.error("Upload submission email failed", {
+        institutionId,
+        studentId,
+        submissionId: submission.id,
+        email: student.email,
+        error: error instanceof Error ? error.message : "unknown_error"
+      });
     }
 
     return {

@@ -2,8 +2,13 @@ import { describe, expect, it } from "bun:test";
 import app from "../../src";
 import { createAuthToken } from "../../src/domains/auth/token";
 import { createTestD1 } from "../support/test-d1";
+import { withCapturedResendEmails } from "../support/resend-mock";
 
 const authSecret = "waitlist-auth-secret";
+const resendEnv = {
+  RESEND_API_KEY: "re_test_key",
+  AUTH_EMAIL_FROM: "PaperBank <notify@paperbank.online>"
+};
 
 const createEnv = (db: D1Database) => ({
   APP_ENV: "test",
@@ -11,6 +16,7 @@ const createEnv = (db: D1Database) => ({
   EMBEDDING_MODEL: "@cf/baai/bge-base-en-v1.5",
   RETRIEVAL_MODEL: "@cf/google/gemma-4-26b-a4b-it",
   AUTH_TOKEN_SECRET: authSecret,
+  ...resendEnv,
   DB: db
 });
 
@@ -34,15 +40,17 @@ describe("waitlist route", () => {
     });
     const accessToken = await createAccessToken(student.id);
 
-    const response = await app.request(
-      "/api/waitlist",
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${accessToken}`
-        }
-      },
-      createEnv(testDb.db)
+    const { result: response, emails } = await withCapturedResendEmails(async () =>
+      await app.request(
+        "/api/waitlist",
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`
+          }
+        },
+        createEnv(testDb.db)
+      )
     );
     const body = (await response.json()) as { success: boolean; message: string };
 
@@ -51,6 +59,12 @@ describe("waitlist route", () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.message).toBe("You have been added to the waitlist.");
+    expect(emails).toHaveLength(1);
+    expect(emails[0]?.to).toEqual(["hassan.mutebi@strathmore.edu"]);
+    expect(emails[0]?.subject).toBe(
+      "You joined the PaperBank waitlist for Strathmore University"
+    );
+    expect(emails[0]?.text).toContain("successfully joined the PaperBank waitlist");
   });
 
   it("rejects an unauthenticated waitlist join", async () => {

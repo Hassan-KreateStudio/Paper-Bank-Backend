@@ -24,7 +24,7 @@ waitlistRoutes.post("/", async (c) => {
     throw new UnauthorizedError("The auth token is invalid.");
   }
 
-  await waitlistService.joinAuthenticatedStudent(db, student);
+  await waitlistService.joinAuthenticatedStudent(db, student, c.env);
 
   return c.json({
     success: true,

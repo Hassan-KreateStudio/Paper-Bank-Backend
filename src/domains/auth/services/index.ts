@@ -2,6 +2,7 @@ import { institutionsRepository } from "../../institutions/repository";
 import { studentsRepository } from "../../students/repository";
 import { AppError, NotFoundError, UnauthorizedError } from "../../../lib/errors";
 import type { EnvBindings } from "../../../lib/app-env";
+import { emailPlatform } from "../../../platform/email";
 import { logger } from "../../../platform/observability";
 import { authRepository } from "../repository";
 import type {
@@ -49,69 +50,6 @@ const createExpiry = () => {
 };
 
 const isExpired = (expiresAt: string) => new Date(expiresAt).getTime() <= Date.now();
-
-const createVerificationEmailText = (verificationCode: string) => {
-  return [
-    "Your PaperBank verification code is below.",
-    "",
-    `Verification code: ${verificationCode}`,
-    "",
-    "This code expires in 10 minutes.",
-    "",
-    "If you did not request this code, you can ignore this email."
-  ].join("\n");
-};
-
-const createVerificationEmailHtml = (verificationCode: string) => {
-  return [
-    "<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #111827;\">",
-    "<h2 style=\"margin-bottom: 12px;\">PaperBank verification code</h2>",
-    "<p>Your PaperBank verification code is below.</p>",
-    `<p style="font-size: 28px; font-weight: 700; letter-spacing: 4px; margin: 20px 0;">${verificationCode}</p>`,
-    "<p>This code expires in 10 minutes.</p>",
-    "<p>If you did not request this code, you can ignore this email.</p>",
-    "</div>"
-  ].join("");
-};
-
-const sendVerificationEmail = async (
-  email: string,
-  verificationCode: string,
-  env: Pick<EnvBindings, "APP_ENV" | "RESEND_API_KEY" | "AUTH_EMAIL_FROM">
-) => {
-  if (!env.RESEND_API_KEY || !env.AUTH_EMAIL_FROM) {
-    if (env.APP_ENV === "production") {
-      throw new AppError("Verification email delivery is not configured.", 500);
-    }
-
-    return false;
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-      "User-Agent": "paper-bank-backend/0.1"
-    },
-    body: JSON.stringify({
-      from: env.AUTH_EMAIL_FROM,
-      to: [email],
-      subject: "Your PaperBank verification code",
-      text: createVerificationEmailText(verificationCode),
-      html: createVerificationEmailHtml(verificationCode)
-    })
-  });
-
-  if (response.ok) {
-    return true;
-  }
-
-  const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-  const message = payload?.message || "Verification email could not be sent.";
-
-  throw new AppError(message, 502);
-};
 
 export const getChallengeCooldownState = (
   latestChallengeCreatedAt: string | null,
@@ -211,7 +149,10 @@ export const authService = {
 
     await authRepository.createChallenge(db, challenge);
 
-    const emailWasSent = await sendVerificationEmail(challenge.email, verificationCode, env);
+    const emailWasSent = await emailPlatform.sendVerificationCode(env, {
+      email: challenge.email,
+      verificationCode
+    });
 
     logger.info("Auth verification code generated", {
       challengeId: challenge.id,

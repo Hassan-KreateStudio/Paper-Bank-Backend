@@ -4,11 +4,16 @@ import { createAuthToken } from "../../src/domains/auth/token";
 import { createStaffAuthToken } from "../../src/domains/staff-auth/token";
 import { createPdfFixture } from "../support/pdf-fixture";
 import { createMockR2Bucket } from "../support/mock-r2";
+import { withCapturedResendEmails } from "../support/resend-mock";
 import { createTestD1 } from "../support/test-d1";
 import { pdfRenderer } from "../../src/platform/pdf/render-pdf-pages";
 
 const authSecret = "super-secret-auth-token";
 const staffAuthSecret = "super-secret-staff-auth-token";
+const resendEnv = {
+  RESEND_API_KEY: "re_test_key",
+  AUTH_EMAIL_FROM: "PaperBank <notify@paperbank.online>"
+};
 
 const createAccessToken = async (
   studentId: string,
@@ -35,6 +40,7 @@ const createEnv = (db: D1Database, bucket: R2Bucket) => ({
   RETRIEVAL_MODEL: "@cf/google/gemma-4-26b-a4b-it",
   AUTH_TOKEN_SECRET: authSecret,
   STAFF_AUTH_TOKEN_SECRET: staffAuthSecret,
+  ...resendEnv,
   DB: db,
   PAPERS_BUCKET: bucket,
   AI: {
@@ -151,16 +157,18 @@ describe("upload confirm and paper retrieval flow", () => {
     formData.set("reviewedByModelAt", "2026-06-24T11:00:00.000Z");
     formData.set("documentFingerprint", "inst_strathmore|bit2205|exam|2026-05-11|unknown");
 
-    const confirmResponse = await app.request(
-      "/api/uploads/confirm",
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${accessToken}`
+    const { result: confirmResponse, emails: submissionEmails } = await withCapturedResendEmails(async () =>
+      await app.request(
+        "/api/uploads/confirm",
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`
+          },
+          body: formData
         },
-        body: formData
-      },
-      env
+        env
+      )
     );
     const confirmBody = (await confirmResponse.json()) as {
       success: boolean;
@@ -196,6 +204,10 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(confirmBody.submission.documentFingerprint).toBe(
       "inst_strathmore|bit2205|exam|2026-05-11|unknown"
     );
+    expect(submissionEmails).toHaveLength(1);
+    expect(submissionEmails[0]?.to).toEqual([student.email]);
+    expect(submissionEmails[0]?.subject).toBe("Your PaperBank upload is now in review");
+    expect(submissionEmails[0]?.text).toContain("Database Systems Exam");
 
     const storedUpload = await (bucket as unknown as ReturnType<typeof createMockR2Bucket>).get(
       confirmBody.submission.fileKey
@@ -220,19 +232,21 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(queueResponse.status).toBe(200);
     expect(queueBody.items.some((item) => item.id === confirmBody.submission.id)).toBe(true);
 
-    const approveResponse = await app.request(
-      `/api/review/submissions/${confirmBody.submission.id}/approve`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${reviewerAccessToken}`,
-          "content-type": "application/json"
+    const { result: approveResponse, emails: approvalEmails } = await withCapturedResendEmails(async () =>
+      await app.request(
+        `/api/review/submissions/${confirmBody.submission.id}/approve`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${reviewerAccessToken}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            notes: "Approved for demo"
+          })
         },
-        body: JSON.stringify({
-          notes: "Approved for demo"
-        })
-      },
-      env
+        env
+      )
     );
     const approveBody = (await approveResponse.json()) as {
       success: boolean;
@@ -256,6 +270,10 @@ describe("upload confirm and paper retrieval flow", () => {
     expect(approveBody.paper.documentFingerprint).toBe(
       "inst_strathmore|bit2205|exam|2026-05-11|unknown"
     );
+    expect(approvalEmails).toHaveLength(1);
+    expect(approvalEmails[0]?.to).toEqual([student.email]);
+    expect(approvalEmails[0]?.subject).toBe("Your PaperBank upload was approved");
+    expect(approvalEmails[0]?.text).toContain("Good news. Your upload has been approved");
 
     const papersResponse = await app.request(
       "/api/papers?query=bit%202205",

@@ -1,5 +1,6 @@
 import type { EnvBindings } from "../../../lib/app-env";
 import { AppError, UnauthorizedError } from "../../../lib/errors";
+import { emailPlatform } from "../../../platform/email";
 import { generateStaffInviteToken, hashStaffInviteToken } from "../invite";
 import { hashStaffPassword } from "../password";
 import { staffAuthRepository } from "../repository";
@@ -31,89 +32,6 @@ const buildAvailableUsername = async (db: D1Database) => {
   }
 
   throw new AppError("A unique reviewer username could not be generated.", 500);
-};
-
-const createStaffInviteEmailText = (input: {
-  institutionName: string;
-  username: string;
-  inviteId: string;
-  inviteToken: string;
-  expiresAt: string;
-}) => {
-  return [
-    `You have been invited to review papers for ${input.institutionName} on PaperBank.`,
-    "",
-    `Username: ${input.username}`,
-    `Invite ID: ${input.inviteId}`,
-    `Activation code: ${input.inviteToken}`,
-    "",
-    `This invite expires on ${input.expiresAt}.`,
-    "",
-    "Use these details to activate your staff account and set your password."
-  ].join("\n");
-};
-
-const createStaffInviteEmailHtml = (input: {
-  institutionName: string;
-  username: string;
-  inviteId: string;
-  inviteToken: string;
-  expiresAt: string;
-}) => {
-  return [
-    "<div style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #111827;\">",
-    `<h2 style="margin-bottom: 12px;">PaperBank reviewer access for ${input.institutionName}</h2>`,
-    "<p>You have been invited to review papers on PaperBank.</p>",
-    `<p><strong>Username:</strong> ${input.username}</p>`,
-    `<p><strong>Invite ID:</strong> ${input.inviteId}</p>`,
-    `<p><strong>Activation code:</strong> ${input.inviteToken}</p>`,
-    `<p>This invite expires on ${input.expiresAt}.</p>`,
-    "<p>Use these details to activate your staff account and set your password.</p>",
-    "</div>"
-  ].join("");
-};
-
-const sendStaffInviteEmail = async (
-  email: string,
-  input: {
-    institutionName: string;
-    username: string;
-    inviteId: string;
-    inviteToken: string;
-    expiresAt: string;
-  },
-  env: Pick<EnvBindings, "APP_ENV" | "RESEND_API_KEY" | "AUTH_EMAIL_FROM">
-) => {
-  if (!env.RESEND_API_KEY || !env.AUTH_EMAIL_FROM) {
-    if (env.APP_ENV === "production") {
-      throw new AppError("Reviewer invitation email delivery is not configured.", 500);
-    }
-
-    return false;
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-      "User-Agent": "paper-bank-backend/0.1"
-    },
-    body: JSON.stringify({
-      from: env.AUTH_EMAIL_FROM,
-      to: [email],
-      subject: `Your PaperBank reviewer access for ${input.institutionName}`,
-      text: createStaffInviteEmailText(input),
-      html: createStaffInviteEmailHtml(input)
-    })
-  });
-
-  if (response.ok) {
-    return true;
-  }
-
-  const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-  throw new AppError(payload?.message || "Reviewer invitation email could not be sent.", 502);
 };
 
 export const staffAuthService = {
@@ -219,16 +137,16 @@ export const staffAuthService = {
     });
 
     try {
-      await sendStaffInviteEmail(
-        normalizedEmail,
+      await emailPlatform.sendStaffInvite(
+        env,
         {
+          email: normalizedEmail,
           institutionName: input.institutionName,
           username,
           inviteId,
           inviteToken,
           expiresAt
-        },
-        env
+        }
       );
     } catch (error) {
       await staffAuthRepository.deleteInvite(db, inviteId);
