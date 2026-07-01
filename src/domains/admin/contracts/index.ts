@@ -71,6 +71,25 @@ export type AdminWaitlistItem = {
   createdAt: string;
 };
 
+export type AdminPaymentItem = {
+  id: string;
+  institutionId: string;
+  institutionName: string;
+  studentId: string;
+  studentAdmissionNumber: string;
+  studentFullName: string;
+  studentEmail: string;
+  approvedUploadCountSnapshot: number;
+  amountKes: number;
+  status: "ready" | "requested" | "approved" | "paid" | "cancelled";
+  mpesaPhoneNumber: string | null;
+  requestedAt: string | null;
+  approvedAt: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminAnalyticsOverview = {
   institutions: number;
   students: number;

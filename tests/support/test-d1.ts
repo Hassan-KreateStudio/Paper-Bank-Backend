@@ -20,7 +20,8 @@ const migrationFiles = [
   "migrations/d1/0015_add_student_role.sql",
   "migrations/d1/0016_create_staff_users.sql",
   "migrations/d1/0017_create_staff_invites.sql",
-  "migrations/d1/0018_drop_upload_review_prompt_from_institutions.sql"
+  "migrations/d1/0018_drop_upload_review_prompt_from_institutions.sql",
+  "migrations/d1/0019_create_cashout_requests.sql"
 ];
 
 class TestD1Statement {
@@ -594,6 +595,89 @@ export const createTestD1 = () => {
     return entry;
   };
 
+  const seedCashoutRequest = (overrides?: Partial<{
+    id: string;
+    institutionId: string;
+    studentId: string;
+    approvedUploadCountSnapshot: number;
+    amountKes: number;
+    status: "ready" | "requested" | "approved" | "paid" | "cancelled";
+    mpesaPhoneNumber: string | null;
+    requestedAt: string | null;
+    approvedAt: string | null;
+    paidAt: string | null;
+  }>) => {
+    const now = new Date().toISOString();
+    const existingStudent = sqlite
+      .query(
+        `
+          SELECT id
+          FROM students
+          WHERE institution_id = ?1
+          ORDER BY created_at ASC
+          LIMIT 1
+        `
+      )
+      .get((overrides?.institutionId ?? "inst_strathmore")) as { id: string } | null;
+    const ensuredStudentId =
+      overrides?.studentId ??
+      existingStudent?.id ??
+      seedStudent({
+        institutionId: overrides?.institutionId ?? "inst_strathmore",
+        status: "active",
+        emailVerifiedAt: now
+      }).id;
+    const cashoutRequest = {
+      id: overrides?.id ?? crypto.randomUUID(),
+      institutionId: overrides?.institutionId ?? "inst_strathmore",
+      studentId: ensuredStudentId,
+      approvedUploadCountSnapshot: overrides?.approvedUploadCountSnapshot ?? 5,
+      amountKes: overrides?.amountKes ?? 100,
+      status: overrides?.status ?? "ready",
+      mpesaPhoneNumber: overrides?.mpesaPhoneNumber ?? null,
+      requestedAt: overrides?.requestedAt ?? null,
+      approvedAt: overrides?.approvedAt ?? null,
+      paidAt: overrides?.paidAt ?? null
+    };
+
+    sqlite
+      .query(
+        `
+          INSERT INTO cashout_requests (
+            id,
+            institution_id,
+            student_id,
+            approved_upload_count_snapshot,
+            amount_kes,
+            status,
+            mpesa_phone_number,
+            requested_at,
+            approved_at,
+            paid_at,
+            created_at,
+            updated_at
+          )
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        `
+      )
+      .run(
+        cashoutRequest.id,
+        cashoutRequest.institutionId,
+        cashoutRequest.studentId,
+        cashoutRequest.approvedUploadCountSnapshot,
+        cashoutRequest.amountKes,
+        cashoutRequest.status,
+        cashoutRequest.mpesaPhoneNumber,
+        cashoutRequest.requestedAt,
+        cashoutRequest.approvedAt,
+        cashoutRequest.paidAt,
+        now,
+        now
+      );
+
+    return cashoutRequest;
+  };
+
   const close = () => {
     sqlite.close();
   };
@@ -607,6 +691,7 @@ export const createTestD1 = () => {
     seedPaper,
     seedUploadSubmission,
     seedWaitlistEntry,
+    seedCashoutRequest,
     getStudent,
     getStaffUser,
     getStaffUserByEmail,

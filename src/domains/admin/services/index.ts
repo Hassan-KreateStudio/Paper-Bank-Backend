@@ -2,6 +2,7 @@ import type { EnvBindings } from "../../../lib/app-env";
 import { AppError, NotFoundError } from "../../../lib/errors";
 import type { StudentRole } from "../../students/contracts";
 import { institutionsRepository } from "../../institutions/repository";
+import { rewardsService } from "../../rewards/services";
 import { reviewService } from "../../review/services";
 import { staffAuthRepository } from "../../staff-auth/repository";
 import { staffAuthService } from "../../staff-auth/services";
@@ -227,6 +228,18 @@ export const adminService = {
   },
   listWaitlist: async (db: D1Database) => {
     return await adminWaitlistRepository.list(db);
+  },
+  listPayments: async (db: D1Database) => {
+    return await rewardsService.listAllCashouts(db);
+  },
+  getPayment: async (db: D1Database, paymentId: string) => {
+    return await rewardsService.getCashoutRequest(db, paymentId);
+  },
+  approvePayment: async (db: D1Database, paymentId: string) => {
+    return await rewardsService.approveCashoutRequest(db, paymentId);
+  },
+  markPaymentPaid: async (db: D1Database, paymentId: string) => {
+    return await rewardsService.markCashoutPaid(db, paymentId);
   },
   getAnalyticsOverview: async (db: D1Database) => {
     return await adminAnalyticsRepository.overview(db);

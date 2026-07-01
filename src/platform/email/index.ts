@@ -235,6 +235,9 @@ export const emailPlatform = {
       unitCode: string;
       unitName: string;
       paperType: string;
+      currentCycleApprovedUploads: number;
+      currentCycleTargetUploads: number;
+      lifetimeEarnedKes: number;
     }
   ) => {
     const text = [
@@ -246,6 +249,9 @@ export const emailPlatform = {
       `Unit: ${input.unitCode} - ${input.unitName}`,
       `Type: ${input.paperType.toUpperCase()}`,
       "",
+      `Current cashout progress: ${input.currentCycleApprovedUploads}/${input.currentCycleTargetUploads}`,
+      `Lifetime earned: KES ${input.lifetimeEarnedKes}`,
+      "",
       "Thank you for helping grow the PaperBank library."
     ].join("\n");
 
@@ -256,6 +262,8 @@ export const emailPlatform = {
       `<strong>Title:</strong> ${input.title}`,
       `<strong>Unit:</strong> ${input.unitCode} - ${input.unitName}`,
       `<strong>Type:</strong> ${input.paperType.toUpperCase()}`,
+      `<strong>Current cashout progress:</strong> ${input.currentCycleApprovedUploads}/${input.currentCycleTargetUploads}`,
+      `<strong>Lifetime earned:</strong> KES ${input.lifetimeEarnedKes}`,
       "Thank you for helping grow the PaperBank library."
     ]);
 
@@ -269,6 +277,88 @@ export const emailPlatform = {
       },
       "Approval notification email delivery is not configured.",
       "Approval notification email could not be sent."
+    );
+  },
+  sendCashoutUnlocked: async (
+    env: TransactionalEmailEnv,
+    input: {
+      email: string;
+      fullName: string;
+      institutionName: string;
+      amountKes: number;
+      readyCashoutCount: number;
+    }
+  ) => {
+    const text = [
+      `Hi ${input.fullName},`,
+      "",
+      "Your PaperBank cashout has been unlocked.",
+      formatInstitutionLine(input.institutionName),
+      `Unlocked amount: KES ${input.amountKes}`,
+      `Ready cashouts: ${input.readyCashoutCount}`,
+      "",
+      "Open your PaperBank account and submit your M-PESA number to request payout."
+    ].join("\n");
+
+    const html = wrapHtml("Your PaperBank cashout is unlocked", [
+      `Hi ${input.fullName},`,
+      "Your PaperBank cashout has been unlocked.",
+      formatInstitutionLine(input.institutionName),
+      `<strong>Unlocked amount:</strong> KES ${input.amountKes}`,
+      `<strong>Ready cashouts:</strong> ${input.readyCashoutCount}`,
+      "Open your PaperBank account and submit your M-PESA number to request payout."
+    ]);
+
+    return sendTransactionalEmail(
+      env,
+      {
+        to: input.email,
+        subject: "Your PaperBank cashout is unlocked",
+        text,
+        html
+      },
+      "Cashout email delivery is not configured.",
+      "Cashout unlocked email could not be sent."
+    );
+  },
+  sendStaffCashoutReadyNotification: async (
+    env: TransactionalEmailEnv,
+    input: {
+      email: string;
+      institutionName: string;
+      studentFullName: string;
+      studentEmail: string;
+      readyCashoutCount: number;
+      amountKes: number;
+    }
+  ) => {
+    const text = [
+      `A PaperBank student has reached cashout-ready status for ${input.institutionName}.`,
+      "",
+      `Student: ${input.studentFullName}`,
+      `Email: ${input.studentEmail}`,
+      `Ready cashouts: ${input.readyCashoutCount}`,
+      `Newly unlocked amount: KES ${input.amountKes}`
+    ].join("\n");
+
+    const html = wrapHtml(`PaperBank cashout ready for ${input.institutionName}`, [
+      `A PaperBank student has reached cashout-ready status for ${input.institutionName}.`,
+      `<strong>Student:</strong> ${input.studentFullName}`,
+      `<strong>Email:</strong> ${input.studentEmail}`,
+      `<strong>Ready cashouts:</strong> ${input.readyCashoutCount}`,
+      `<strong>Newly unlocked amount:</strong> KES ${input.amountKes}`
+    ]);
+
+    return sendTransactionalEmail(
+      env,
+      {
+        to: input.email,
+        subject: `PaperBank cashout ready for ${input.institutionName}`,
+        text,
+        html
+      },
+      "Staff cashout email delivery is not configured.",
+      "Staff cashout notification email could not be sent."
     );
   }
 };

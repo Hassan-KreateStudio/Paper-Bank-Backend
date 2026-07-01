@@ -141,6 +141,17 @@ reviewRoutes.get("/papers", async (c) => {
   });
 });
 
+reviewRoutes.get("/cashouts", async (c) => {
+  const db = requireDb(c.env);
+  const scope = requireReviewScope(c);
+  const items = await reviewService.listCashouts(db, scope);
+
+  return c.json({
+    domain: "review",
+    items
+  });
+});
+
 reviewRoutes.get("/papers/:paperId", async (c) => {
   const db = requireDb(c.env);
   const scope = requireReviewScope(c);

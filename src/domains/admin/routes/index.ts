@@ -269,26 +269,42 @@ adminRoutes.post("/invitations", async (c) => {
   });
 });
 
-adminRoutes.get("/payments", async () => {
-  throw new AppError("Admin payments are not implemented yet.", 501, {
-    clientMessage: "Admin payments are not implemented yet."
+adminRoutes.get("/payments", async (c) => {
+  const db = requireDb(c.env);
+  const items = await adminService.listPayments(db);
+
+  return c.json({
+    domain: "admin",
+    items
   });
 });
 
-adminRoutes.get("/payments/:paymentId", async () => {
-  throw new AppError("Admin payment detail is not implemented yet.", 501, {
-    clientMessage: "Admin payment detail is not implemented yet."
+adminRoutes.get("/payments/:paymentId", async (c) => {
+  const db = requireDb(c.env);
+  const payment = await adminService.getPayment(db, c.req.param("paymentId"));
+
+  return c.json({
+    success: true,
+    payment
   });
 });
 
-adminRoutes.post("/payments/:paymentId/approve", async () => {
-  throw new AppError("Admin payment approval is not implemented yet.", 501, {
-    clientMessage: "Admin payment approval is not implemented yet."
+adminRoutes.post("/payments/:paymentId/approve", async (c) => {
+  const db = requireDb(c.env);
+  const payment = await adminService.approvePayment(db, c.req.param("paymentId"));
+
+  return c.json({
+    success: true,
+    payment
   });
 });
 
-adminRoutes.post("/payments/:paymentId/mark-paid", async () => {
-  throw new AppError("Admin payment marking is not implemented yet.", 501, {
-    clientMessage: "Admin payment marking is not implemented yet."
+adminRoutes.post("/payments/:paymentId/mark-paid", async (c) => {
+  const db = requireDb(c.env);
+  const payment = await adminService.markPaymentPaid(db, c.req.param("paymentId"));
+
+  return c.json({
+    success: true,
+    payment
   });
 });

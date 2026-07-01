@@ -49,6 +49,21 @@ export const staffAuthRepository = {
       .bind(email.trim().toLowerCase())
       .first<StaffUser>();
   },
+  listCashoutNotificationRecipients: async (db: D1Database, institutionId: string) => {
+    const result = await db
+      .prepare(
+        `
+          ${staffUserSelect}
+          WHERE status = 'active'
+            AND ((role = 'reviewer' AND institution_id = ?1) OR role = 'admin')
+          ORDER BY created_at ASC
+        `
+      )
+      .bind(institutionId)
+      .all<StaffUser>();
+
+    return result.results;
+  },
   create: async (
     db: D1Database,
     input: {
