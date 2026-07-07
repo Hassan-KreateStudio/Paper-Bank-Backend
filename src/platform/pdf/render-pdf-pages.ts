@@ -1,4 +1,5 @@
 import { AppError } from "../../lib/errors";
+import { logger } from "../observability";
 
 const PDFJS_VERSION = "4.10.38";
 const PDFJS_MODULE_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`;
@@ -135,12 +136,18 @@ type BrowserBinding = {
   fetch: typeof fetch;
 };
 
+type RenderPdfPagesOptions = {
+  requestId?: string;
+};
+
 const renderPdfPagesWithBrowser = async (
   browserBinding: BrowserBinding,
-  file: File
+  file: File,
+  options: RenderPdfPagesOptions = {}
 ): Promise<RenderedPdfPage[]> => {
   const { launch } = await import("@cloudflare/playwright");
   const browser = await launch(browserBinding);
+  const startedAt = Date.now();
 
   try {
     const page = await browser.newPage({
@@ -190,8 +197,30 @@ const renderPdfPagesWithBrowser = async (
       });
     }
 
+    logger.info("pdf review pages rendered", {
+      requestId: options.requestId,
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      pageCount,
+      renderedImageCount: renderedPages.length,
+      renderedImageBytes: renderedPages.reduce(
+        (total, renderedPage) => total + Math.ceil((renderedPage.imageBase64.length * 3) / 4),
+        0
+      ),
+      durationMs: Date.now() - startedAt
+    });
+
     return renderedPages;
   } catch (error) {
+    logger.error("pdf review render failed", {
+      requestId: options.requestId,
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      durationMs: Date.now() - startedAt,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+
     if (error instanceof AppError) {
       throw error;
     }

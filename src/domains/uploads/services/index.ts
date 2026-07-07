@@ -222,7 +222,8 @@ export const uploadsService = {
 
     const review = await reviewUploadDocument(env, {
       file,
-      institutionPrompt
+      institutionPrompt,
+      requestId
     });
 
     logger.info("upload prefill model review", {

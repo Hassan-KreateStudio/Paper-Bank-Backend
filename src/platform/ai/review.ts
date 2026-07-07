@@ -184,6 +184,7 @@ const UPLOAD_REVIEW_JSON_SCHEMA = {
 export type UploadReviewRequest = {
   file: File;
   institutionPrompt: string;
+  requestId?: string;
 };
 
 export type UploadReviewResult = {
@@ -480,6 +481,38 @@ const describeModelResponseShape = (raw: unknown) => {
   };
 };
 
+const estimateBase64Bytes = (base64: string) => Math.ceil((base64.length * 3) / 4);
+
+const serializeUnknownError = (error: unknown) => {
+  if (error instanceof Error) {
+    const errorWithMetadata = error as Error & {
+      cause?: unknown;
+      code?: unknown;
+      status?: unknown;
+    };
+
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause:
+        errorWithMetadata.cause instanceof Error
+          ? {
+              name: errorWithMetadata.cause.name,
+              message: errorWithMetadata.cause.message,
+              stack: errorWithMetadata.cause.stack
+            }
+          : errorWithMetadata.cause,
+      code: errorWithMetadata.code,
+      status: errorWithMetadata.status
+    };
+  }
+
+  return {
+    value: error
+  };
+};
+
 const parseUploadReviewResult = (raw: unknown): UploadReviewResult => {
   const directObject = readModelResponseObject(raw);
   const parsed = directObject ?? JSON.parse(extractJsonText(readModelResponseText(raw)));
@@ -582,7 +615,9 @@ export const reviewUploadDocument = async (
   }
 
   const model = getUploadReviewModel(env);
-  const renderedPages = await pdfRenderer.renderPdfPages(env.BROWSER, request.file);
+  const renderedPages = await pdfRenderer.renderPdfPages(env.BROWSER, request.file, {
+    requestId: request.requestId
+  });
   const content: Array<Record<string, unknown>> = [
     {
       type: "text",
@@ -603,7 +638,7 @@ export const reviewUploadDocument = async (
     });
   }
 
-  const raw = await ai.run(model, {
+  const payload = {
     messages: [
       {
         role: "system",
@@ -616,7 +651,47 @@ export const reviewUploadDocument = async (
     ],
     guided_json: UPLOAD_REVIEW_JSON_SCHEMA,
     temperature: 0
+  };
+
+  logger.info("upload review model request", {
+    requestId: request.requestId,
+    fileName: request.file.name,
+    fileSizeBytes: request.file.size,
+    model,
+    renderedPageCount: renderedPages.length,
+    renderedImageBytes: renderedPages.reduce(
+      (total, renderedPage) => total + estimateBase64Bytes(renderedPage.imageBase64),
+      0
+    ),
+    contentItems: content.length,
+    institutionPromptChars: request.institutionPrompt.length,
+    requestShape: {
+      hasMessages: Array.isArray(payload.messages),
+      hasGuidedJson: "guided_json" in payload,
+      temperature: payload.temperature
+    }
   });
+
+  let raw: unknown;
+
+  try {
+    raw = await ai.run(model, payload);
+  } catch (error) {
+    logger.error("upload review model invocation failed", {
+      requestId: request.requestId,
+      fileName: request.file.name,
+      fileSizeBytes: request.file.size,
+      model,
+      renderedPageCount: renderedPages.length,
+      renderedImageBytes: renderedPages.reduce(
+        (total, renderedPage) => total + estimateBase64Bytes(renderedPage.imageBase64),
+        0
+      ),
+      error: serializeUnknownError(error)
+    });
+
+    throw error;
+  }
 
   logger.info("upload review model raw response shape", describeModelResponseShape(raw));
 
