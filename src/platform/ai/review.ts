@@ -4,6 +4,14 @@ import { logger } from "../observability";
 import { pdfRenderer } from "../pdf/render-pdf-pages";
 import { getUploadReviewModel } from "./config";
 
+const UPLOAD_REVIEW_AI_MAX_ATTEMPTS = 2;
+const UPLOAD_REVIEW_AI_BASE_RETRY_DELAY_MS = 500;
+const UPLOAD_REVIEW_AI_CAPACITY_CLIENT_MESSAGE =
+  "We are experiencing a lot of traffic right now. Try again later.";
+const UPLOAD_REVIEW_AI_TIMEOUT_CLIENT_MESSAGE =
+  "We are experiencing a lot of traffic right now. Try again later.";
+const UPLOAD_REVIEW_AI_ATTEMPT_TIMEOUT_MS = 6_000;
+
 const PAPER_BANK_UPLOAD_REVIEW_SYSTEM_INSTRUCTION = `
 You are PaperBank's document review and metadata extraction engine.
 
@@ -483,6 +491,29 @@ const describeModelResponseShape = (raw: unknown) => {
 
 const estimateBase64Bytes = (base64: string) => Math.ceil((base64.length * 3) / 4);
 
+const sleep = async (durationMs: number) => {
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
+};
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  return await new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`3046: Request timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+};
+
 const serializeUnknownError = (error: unknown) => {
   if (error instanceof Error) {
     const errorWithMetadata = error as Error & {
@@ -512,6 +543,34 @@ const serializeUnknownError = (error: unknown) => {
     value: error
   };
 };
+
+const isWorkersAiCapacityError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("3040") &&
+    normalizedMessage.includes("capacity temporarily exceeded")
+  );
+};
+
+const isWorkersAiTimeoutError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+
+  return (
+    normalizedMessage.includes("3046") && normalizedMessage.includes("request timeout")
+  );
+};
+
+const computeRetryDelayMs = (attemptNumber: number) =>
+  UPLOAD_REVIEW_AI_BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attemptNumber - 1);
 
 const parseUploadReviewResult = (raw: unknown): UploadReviewResult => {
   const directObject = readModelResponseObject(raw);
@@ -633,7 +692,7 @@ export const reviewUploadDocument = async (
     content.push({
       type: "image_url",
       image_url: {
-        url: `data:image/png;base64,${renderedPage.imageBase64}`
+        url: `data:${renderedPage.imageMimeType ?? "image/png"};base64,${renderedPage.imageBase64}`
       }
     });
   }
@@ -674,23 +733,81 @@ export const reviewUploadDocument = async (
 
   let raw: unknown;
 
-  try {
-    raw = await ai.run(model, payload);
-  } catch (error) {
-    logger.error("upload review model invocation failed", {
-      requestId: request.requestId,
-      fileName: request.file.name,
-      fileSizeBytes: request.file.size,
-      model,
-      renderedPageCount: renderedPages.length,
-      renderedImageBytes: renderedPages.reduce(
-        (total, renderedPage) => total + estimateBase64Bytes(renderedPage.imageBase64),
-        0
-      ),
-      error: serializeUnknownError(error)
-    });
+  for (let attemptNumber = 1; attemptNumber <= UPLOAD_REVIEW_AI_MAX_ATTEMPTS; attemptNumber += 1) {
+    try {
+      raw = await withTimeout(ai.run(model, payload), UPLOAD_REVIEW_AI_ATTEMPT_TIMEOUT_MS);
+      break;
+    } catch (error) {
+      const capacityRetryable = isWorkersAiCapacityError(error);
+      const timeoutRetryable = isWorkersAiTimeoutError(error);
+      const retryable = capacityRetryable || timeoutRetryable;
 
-    throw error;
+      logger.error("upload review model invocation failed", {
+        requestId: request.requestId,
+        fileName: request.file.name,
+        fileSizeBytes: request.file.size,
+        model,
+        renderedPageCount: renderedPages.length,
+        renderedImageBytes: renderedPages.reduce(
+          (total, renderedPage) => total + estimateBase64Bytes(renderedPage.imageBase64),
+          0
+        ),
+        attemptNumber,
+        maxAttempts: UPLOAD_REVIEW_AI_MAX_ATTEMPTS,
+        timeoutMs: UPLOAD_REVIEW_AI_ATTEMPT_TIMEOUT_MS,
+        capacityRetryable,
+        timeoutRetryable,
+        retryable,
+        error: serializeUnknownError(error)
+      });
+
+      if (!retryable) {
+        throw error;
+      }
+
+      if (attemptNumber === UPLOAD_REVIEW_AI_MAX_ATTEMPTS) {
+        const timeoutFailure = isWorkersAiTimeoutError(error);
+
+        throw new AppError(
+          timeoutFailure
+            ? "Workers AI request timed out."
+            : "Workers AI capacity is temporarily exceeded.",
+          503,
+          {
+            code: timeoutFailure
+              ? "workers_ai_request_timeout"
+              : "workers_ai_capacity_exceeded",
+            clientMessage: timeoutFailure
+              ? UPLOAD_REVIEW_AI_TIMEOUT_CLIENT_MESSAGE
+              : UPLOAD_REVIEW_AI_CAPACITY_CLIENT_MESSAGE,
+          details: {
+            requestId: request.requestId,
+            model,
+            providerMessage: error instanceof Error ? error.message : String(error),
+            timeoutMs: UPLOAD_REVIEW_AI_ATTEMPT_TIMEOUT_MS
+          }
+          }
+        );
+      }
+
+      const retryDelayMs = computeRetryDelayMs(attemptNumber);
+
+      logger.info("upload review model retry scheduled", {
+        requestId: request.requestId,
+        fileName: request.file.name,
+        model,
+        attemptNumber,
+        nextAttemptNumber: attemptNumber + 1,
+        timeoutMs: UPLOAD_REVIEW_AI_ATTEMPT_TIMEOUT_MS,
+        retryDelayMs
+      });
+
+      await sleep(retryDelayMs);
+    }
+  }
+
+  if (typeof raw === "undefined") {
+    throw new AppError("Upload review model did not return a response.", 502);
   }
 
   logger.info("upload review model raw response shape", describeModelResponseShape(raw));

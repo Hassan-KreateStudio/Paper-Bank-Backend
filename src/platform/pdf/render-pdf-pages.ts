@@ -4,7 +4,9 @@ import { logger } from "../observability";
 const PDFJS_VERSION = "4.10.38";
 const PDFJS_MODULE_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`;
 const PDFJS_WORKER_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
-const PAGE_SCALE = 1.6;
+const PAGE_SCALE = 1.1;
+const REVIEW_IMAGE_FORMAT = "jpeg";
+const REVIEW_IMAGE_QUALITY = 70;
 
 const PDF_RENDERER_HTML = `<!doctype html>
 <html lang="en">
@@ -130,6 +132,7 @@ const encodeBytes = (value: Uint8Array | ArrayBuffer) => {
 export type RenderedPdfPage = {
   pageNumber: number;
   imageBase64: string;
+  imageMimeType?: string;
 };
 
 type BrowserBinding = {
@@ -188,12 +191,14 @@ const renderPdfPagesWithBrowser = async (
       const pageImage = await page
         .locator(`[data-paperbank-page="${pageNumber}"]`)
         .screenshot({
-          type: "png"
+          type: REVIEW_IMAGE_FORMAT,
+          quality: REVIEW_IMAGE_QUALITY
         });
 
       renderedPages.push({
         pageNumber,
-        imageBase64: encodeBytes(pageImage)
+        imageBase64: encodeBytes(pageImage),
+        imageMimeType: `image/${REVIEW_IMAGE_FORMAT}`
       });
     }
 

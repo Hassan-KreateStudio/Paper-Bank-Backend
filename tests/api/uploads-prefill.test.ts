@@ -890,4 +890,100 @@ describe("upload prefill route", () => {
     expect(body.success).toBe(false);
     expect(body.message).toBe("Something went wrong on our side. Please try again.");
   }, 15000);
+
+  it("retries capacity failures and returns 503 when workers ai remains busy", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+    let runCount = 0;
+
+    formData.set("file", await createExamPdfFile("capacity-busy.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: {
+          run: async () => {
+            runCount += 1;
+            throw new Error("3040: Capacity temporarily exceeded, please try again.");
+          }
+        }
+      })
+    );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(runCount).toBe(2);
+    expect(response.status).toBe(503);
+    expect(body.success).toBe(false);
+    expect(body.message).toBe("We are experiencing a lot of traffic right now. Try again later.");
+  }, 15000);
+
+  it("retries timeout failures and returns 503 when workers ai keeps timing out", async () => {
+    pdfRenderer.renderPdfPages = async () => [
+      {
+        pageNumber: 1,
+        imageBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnWZtQAAAAASUVORK5CYII="
+      }
+    ];
+    const testDb = createTestD1();
+    testDb.seedInstitution({
+    });
+    const student = testDb.seedStudent({
+      status: "active",
+      emailVerifiedAt: new Date().toISOString()
+    });
+    const accessToken = await createAccessToken(student.id);
+    const formData = new FormData();
+    let runCount = 0;
+
+    formData.set("file", await createExamPdfFile("timeout-busy.pdf"));
+
+    const response = await app.request(
+      "/api/uploads/prefill",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      },
+      createEnv(testDb.db, {
+        AI: {
+          run: async () => {
+            runCount += 1;
+            throw new Error("3046: Request timeout");
+          }
+        }
+      })
+    );
+    const body = (await response.json()) as { success: boolean; message: string };
+
+    testDb.close();
+
+    expect(runCount).toBe(2);
+    expect(response.status).toBe(503);
+    expect(body.success).toBe(false);
+    expect(body.message).toBe("We are experiencing a lot of traffic right now. Try again later.");
+  }, 15000);
 });
